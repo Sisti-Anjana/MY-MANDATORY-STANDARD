@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { issuesAPI } from '../services/api';
+import { issuesAPI, portfoliosAPI } from '../services/api';
+import EditIssueModal from './EditIssueModal';
 
 const IssuesTable = () => {
   const [issues, setIssues] = useState([]);
@@ -12,10 +13,29 @@ const IssuesTable = () => {
     dateFrom: '',
     dateTo: ''
   });
+  const [editingIssue, setEditingIssue] = useState(null);
+  const [portfolios, setPortfolios] = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  const monitoredPersonnel = [
+    "Kumar S", "Rajesh K", "Bharat Gu", "Anita P", "Deepa L", 
+    "Manoj D", "Vikram N", "Ravi T", "Lakshmi B",
+    "BXJBSA", "utfzytf", "76tyjtv", "HJVXHASV", "kinny"
+  ];
 
   useEffect(() => {
     fetchIssues();
+    fetchPortfolios();
   }, []);
+
+  const fetchPortfolios = async () => {
+    try {
+      const response = await portfoliosAPI.getAll();
+      setPortfolios(response.data);
+    } catch (err) {
+      console.error('Error fetching portfolios:', err);
+    }
+  };
 
   const fetchIssues = async () => {
     try {
@@ -31,6 +51,48 @@ const IssuesTable = () => {
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const handleEditIssue = (issue) => {
+    setEditingIssue(issue);
+    setShowEditModal(true);
+  };
+
+  const handleSaveIssue = async (updatedIssue) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/issues/${updatedIssue.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          portfolio_id: updatedIssue.portfolio_id,
+          issue_hour: updatedIssue.issue_hour,
+          issue_present: updatedIssue.issue_present,
+          issue_details: updatedIssue.issue_details,
+          case_number: updatedIssue.case_number,
+          monitored_by: updatedIssue.monitored_by,
+          issues_missed_by: updatedIssue.issues_missed_by
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update issue');
+      }
+
+      // Refresh the issues list
+      await fetchIssues();
+      setShowEditModal(false);
+      setEditingIssue(null);
+    } catch (err) {
+      console.error('Error updating issue:', err);
+      alert('Failed to update issue: ' + err.message);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setShowEditModal(false);
+    setEditingIssue(null);
   };
 
   const filteredIssues = issues.filter(issue => {
@@ -188,11 +250,11 @@ const IssuesTable = () => {
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                      issue.issue_present === 'Yes' 
+                      issue.issue_present?.toString().toLowerCase() === 'yes' 
                         ? 'bg-red-100 text-red-800' 
                         : 'bg-green-100 text-green-800'
                     }`}>
-                      {issue.issue_present}
+                      {issue.issue_present?.toString().toLowerCase() === 'yes' ? 'Yes' : 'No'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">
@@ -211,7 +273,10 @@ const IssuesTable = () => {
                     {issue.issues_missed_by || '-'}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <button className="text-blue-600 hover:text-blue-900 mr-3">
+                    <button 
+                      onClick={() => handleEditIssue(issue)}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
                       Edit
                     </button>
                   </td>
@@ -229,6 +294,18 @@ const IssuesTable = () => {
           Complete list of all reported issues across all portfolios
         </p>
       </div>
+
+      {/* Edit Issue Modal */}
+      {showEditModal && editingIssue && (
+        <EditIssueModal
+          issue={editingIssue}
+          portfolios={portfolios.map(p => ({ portfolio_id: p.id, name: p.name }))}
+          sites={[]}
+          monitoredPersonnel={monitoredPersonnel}
+          onClose={handleCloseModal}
+          onSave={handleSaveIssue}
+        />
+      )}
     </div>
   );
 };

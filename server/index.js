@@ -1,15 +1,36 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Session store (in production, use Redis or similar)
+const sessions = new Map();
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Session middleware
+app.use((req, res, next) => {
+  let sessionId = req.headers['x-session-id'];
+  if (!sessionId) {
+    sessionId = uuidv4();
+    sessions.set(sessionId, { createdAt: Date.now() });
+  }
+  req.sessionId = sessionId;
+  res.setHeader('x-session-id', sessionId);
+  next();
+});
+
+// Cleanup expired reservations (run every minute)
+setInterval(() => {
+  db.run('DELETE FROM hour_reservations WHERE expires_at < datetime("now")');
+}, 60000);
 
 // Routes
 
@@ -63,6 +84,62 @@ app.delete('/api/portfolios/:id', (req, res) => {
   });
 });
 
+// Get portfolio status (all_sites_checked)
+app.get('/api/portfolios/:id/status', (req, res) => {
+  const { id } = req.params;
+  
+  db.get(
+    'SELECT id, name, all_sites_checked, updated_at FROM portfolios WHERE id = ?',
+    [id],
+    (err, row) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (!row) {
+        res.status(404).json({ error: 'Portfolio not found' });
+        return;
+      }
+      res.json({
+        id: row.id,
+        name: row.name,
+        all_sites_checked: row.all_sites_checked || false,
+        updated_at: row.updated_at
+      });
+    }
+  );
+});
+
+// Update portfolio status (all_sites_checked)
+app.put('/api/portfolios/:id/status', (req, res) => {
+  const { id } = req.params;
+  const { all_sites_checked } = req.body;
+  
+  if (typeof all_sites_checked !== 'boolean') {
+    res.status(400).json({ error: 'all_sites_checked must be a boolean value' });
+    return;
+  }
+  
+  db.run(
+    'UPDATE portfolios SET all_sites_checked = ?, updated_at = datetime("now") WHERE id = ?',
+    [all_sites_checked, id],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Portfolio not found' });
+        return;
+      }
+      res.json({ 
+        message: 'Portfolio status updated successfully',
+        all_sites_checked: all_sites_checked
+      });
+    }
+  );
+});
+
 // Get sites by portfolio
 app.get('/api/portfolios/:portfolioId/sites', (req, res) => {
   const portfolioId = req.params.portfolioId;
@@ -98,26 +175,47 @@ app.get('/api/sites', (req, res) => {
 // Create new issue
 app.post('/api/issues', (req, res) => {
   const { portfolio_id, issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by } = req.body;
+  const sessionId = req.sessionId;
   
   if (!portfolio_id || !issue_hour) {
     res.status(400).json({ error: 'Portfolio and hour are required' });
     return;
   }
 
+  if (!monitored_by) {
+    res.status(400).json({ error: 'Monitored By is required' });
+    return;
+  }
+
+  // Normalize issue_present to proper case (Yes or No)
+  const normalizedIssuePresent = issue_present && issue_present.toString().toLowerCase() === 'yes' ? 'Yes' : 'No';
+
   // If issue_present is "Yes", issue_details should be provided
-  if (issue_present === 'Yes' && !issue_details) {
+  if (normalizedIssuePresent === 'Yes' && !issue_details) {
     res.status(400).json({ error: 'Issue details are required when issue is present' });
     return;
   }
 
   db.run(
     'INSERT INTO issues (portfolio_id, issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [portfolio_id, issue_hour, issue_present || null, issue_details || null, case_number || null, monitored_by || null, issues_missed_by || null],
+    [portfolio_id, issue_hour, normalizedIssuePresent, issue_details || null, case_number || null, monitored_by || null, issues_missed_by || null],
     function(err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
+      
+      // Release the reservation after successful issue creation
+      db.run(
+        'DELETE FROM hour_reservations WHERE portfolio_id = ? AND issue_hour = ? AND monitored_by = ? AND session_id = ?',
+        [portfolio_id, issue_hour, monitored_by, sessionId],
+        (releaseErr) => {
+          if (releaseErr) {
+            console.error('Error releasing reservation:', releaseErr);
+          }
+        }
+      );
+      
       res.json({ 
         id: this.lastID, 
         message: 'Issue created successfully'
@@ -131,12 +229,15 @@ app.put('/api/issues/:id', (req, res) => {
   const { id } = req.params;
   const { issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by } = req.body;
   
+  // Normalize issue_present to proper case (Yes or No)
+  const normalizedIssuePresent = issue_present && issue_present.toString().toLowerCase() === 'yes' ? 'Yes' : 'No';
+  
   db.run(
     `UPDATE issues 
      SET issue_hour = ?, issue_present = ?, issue_details = ?, 
          case_number = ?, monitored_by = ?, issues_missed_by = ?
      WHERE id = ?`,
-    [issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by, id],
+    [issue_hour, normalizedIssuePresent, issue_details, case_number, monitored_by, issues_missed_by, id],
     function(err) {
       if (err) {
         res.status(500).json({ error: err.message });
@@ -198,7 +299,12 @@ app.get('/api/issues', (req, res) => {
       res.status(500).json({ error: err.message });
       return;
     }
-    res.json(rows);
+    // Normalize issue_present values
+    const normalizedRows = rows.map(row => ({
+      ...row,
+      issue_present: row.issue_present && row.issue_present.toString().toLowerCase() === 'yes' ? 'Yes' : 'No'
+    }));
+    res.json(normalizedRows);
   });
 });
 
@@ -341,6 +447,183 @@ app.delete('/api/users/:id', (req, res) => {
     }
     res.json({ message: 'User deleted successfully' });
   });
+});
+
+// Hour Reservation endpoints
+
+// Reserve a portfolio/hour/monitor combination
+app.post('/api/reservations', (req, res) => {
+  const { portfolio_id, issue_hour, monitored_by } = req.body;
+  const sessionId = req.sessionId;
+  
+  if (!portfolio_id || issue_hour === undefined || !monitored_by) {
+    res.status(400).json({ error: 'Portfolio, hour, and monitored_by are required' });
+    return;
+  }
+
+  // Set expiration to 1 hour from now
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+  // Check if already reserved by someone else
+  db.get(
+    'SELECT * FROM hour_reservations WHERE portfolio_id = ? AND issue_hour = ? AND monitored_by = ?',
+    [portfolio_id, issue_hour, monitored_by],
+    (err, row) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      if (row) {
+        // Check if it's expired
+        if (new Date(row.expires_at) < new Date()) {
+          // Delete expired reservation
+          db.run('DELETE FROM hour_reservations WHERE id = ?', [row.id]);
+        } else if (row.session_id !== sessionId) {
+          // Someone else has it reserved
+          res.status(409).json({ 
+            error: 'This combination is already reserved by another user',
+            reserved: true
+          });
+          return;
+        } else {
+          // Same session, update expiration
+          db.run(
+            'UPDATE hour_reservations SET expires_at = ? WHERE id = ?',
+            [expiresAt, row.id],
+            (err) => {
+              if (err) {
+                res.status(500).json({ error: err.message });
+                return;
+              }
+              res.json({ 
+                message: 'Reservation updated',
+                reservation_id: row.id,
+                session_id: sessionId
+              });
+            }
+          );
+          return;
+        }
+      }
+
+      // Create new reservation
+      db.run(
+        'INSERT OR REPLACE INTO hour_reservations (portfolio_id, issue_hour, monitored_by, session_id, expires_at) VALUES (?, ?, ?, ?, ?)',
+        [portfolio_id, issue_hour, monitored_by, sessionId, expiresAt],
+        function(err) {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.json({ 
+            message: 'Reservation created',
+            reservation_id: this.lastID,
+            session_id: sessionId,
+            expires_at: expiresAt
+          });
+        }
+      );
+    }
+  );
+});
+
+// Check if a combination is reserved
+app.get('/api/reservations/check', (req, res) => {
+  const { portfolio_id, issue_hour, monitored_by } = req.query;
+  const sessionId = req.sessionId;
+
+  if (!portfolio_id || !issue_hour || !monitored_by) {
+    res.status(400).json({ error: 'Portfolio, hour, and monitored_by are required' });
+    return;
+  }
+
+  db.get(
+    `SELECT * FROM hour_reservations 
+     WHERE portfolio_id = ? AND issue_hour = ? AND monitored_by = ? 
+     AND expires_at > datetime("now")`,
+    [portfolio_id, issue_hour, monitored_by],
+    (err, row) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      if (row) {
+        res.json({
+          reserved: true,
+          is_yours: row.session_id === sessionId,
+          monitored_by: row.session_id === sessionId ? row.monitored_by : null,
+          expires_at: row.expires_at
+        });
+      } else {
+        res.json({ reserved: false });
+      }
+    }
+  );
+});
+
+// Get all active reservations (for current session only)
+app.get('/api/reservations', (req, res) => {
+  const sessionId = req.sessionId;
+
+  db.all(
+    `SELECT r.*, p.name as portfolio_name 
+     FROM hour_reservations r
+     JOIN portfolios p ON r.portfolio_id = p.id
+     WHERE r.session_id = ? AND r.expires_at > datetime("now")
+     ORDER BY r.reserved_at DESC`,
+    [sessionId],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// Get ALL active reservations (for all users - for card highlighting)
+app.get('/api/reservations/all', (req, res) => {
+  db.all(
+    `SELECT r.*, p.name as portfolio_name 
+     FROM hour_reservations r
+     JOIN portfolios p ON r.portfolio_id = p.id
+     WHERE r.expires_at > datetime("now")
+     ORDER BY r.reserved_at DESC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// Release a reservation
+app.delete('/api/reservations/:id', (req, res) => {
+  const { id } = req.params;
+  const sessionId = req.sessionId;
+
+  // Only allow deletion of own reservations
+  db.run(
+    'DELETE FROM hour_reservations WHERE id = ? AND session_id = ?',
+    [id, sessionId],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Reservation not found or not owned by you' });
+        return;
+      }
+      res.json({ message: 'Reservation released' });
+    }
+  );
 });
 
 app.listen(PORT, () => {

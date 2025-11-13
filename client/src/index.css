@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  /* Ensure tooltips are always on top */
+  .tooltip-container {
+    position: relative;
+    z-index: 1;
+  }
+  
+  .tooltip-container:hover {
+    z-index: 9999;
+  }
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

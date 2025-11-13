@@ -578,15 +578,15 @@ const SinglePage = () => {
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.issue_hour}</td>
                           <td className="px-4 py-3 text-sm">
                             <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                              issue.issue_present === 'Yes' 
+                              (issue.issue_present || '').toLowerCase() === 'yes' 
                                 ? 'bg-red-100 text-red-800' 
                                 : 'bg-green-100 text-green-800'
                             }`}>
-                              {issue.issue_present}
+                              {(issue.issue_present || '').toLowerCase() === 'yes' ? 'Yes' : 'No'}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">
-                            {issue.issue_details || 'No issue present'}
+                            {issue.issue_details || 'No issue'}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.case_number || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.monitored_by || '-'}</td>

@@ -12,6 +12,21 @@ const AdminPanel = ({ onClose }) => {
   const [adminName, setAdminName] = useState('Admin');
   const [loading, setLoading] = useState(false);
 
+  // Authentication check - redirect if not authenticated
+  useEffect(() => {
+    const isAuthenticated = sessionStorage.getItem('adminAuthenticated') === 'true';
+    if (!isAuthenticated) {
+      alert('Unauthorized access! Please login first.');
+      onClose();
+      return;
+    }
+    
+    const username = sessionStorage.getItem('adminUsername');
+    if (username) {
+      setAdminName(username);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -42,20 +57,42 @@ const AdminPanel = ({ onClose }) => {
         setAdminLogs(logsData || []);
       }
 
-      // Note: For users, we're managing them in the component state
-      // In a real app, you'd have a users table
-      const storedUsers = localStorage.getItem('monitoredPersonnel');
-      if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
-      } else {
-        // Default users
-        const defaultUsers = [
-          'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L', 
-          'jenny', 'Kumar S', 'Lakshmi B', 'Manoj D', 'Rajesh K',
-          'Ravi T', 'Vikram N'
-        ];
-        setUsers(defaultUsers);
-        localStorage.setItem('monitoredPersonnel', JSON.stringify(defaultUsers));
+      // Load monitored personnel from Supabase with localStorage fallback
+      try {
+        const { data: personnelData, error: personnelError } = await supabase
+          .from('monitored_personnel')
+          .select('*')
+          .order('name', { ascending: true });
+
+        if (personnelError) {
+          throw personnelError;
+        }
+
+        if (personnelData && personnelData.length > 0) {
+          setUsers(personnelData);
+          localStorage.setItem('monitoredPersonnel', JSON.stringify(personnelData.map(person => person.name)));
+        } else {
+          const storedUsers = localStorage.getItem('monitoredPersonnel');
+          if (storedUsers) {
+            const parsed = JSON.parse(storedUsers);
+            setUsers(parsed.map((name, index) => ({ id: `local-${index}`, name, role: 'monitor' })));
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching monitored personnel from Supabase, using local storage fallback:', err.message);
+        const storedUsers = localStorage.getItem('monitoredPersonnel');
+        if (storedUsers) {
+          const parsed = JSON.parse(storedUsers);
+          setUsers(parsed.map((name, index) => ({ id: `local-${index}`, name, role: 'monitor' })));
+        } else {
+          const defaultUsers = [
+            'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L', 
+            'jenny', 'Kumar S', 'Lakshmi B', 'Manoj D', 'Rajesh K',
+            'Ravi T', 'Vikram N'
+          ];
+          setUsers(defaultUsers.map((name, index) => ({ id: `default-${index}`, name, role: 'monitor' })));
+          localStorage.setItem('monitoredPersonnel', JSON.stringify(defaultUsers));
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -82,6 +119,16 @@ const AdminPanel = ({ onClose }) => {
   const handleAddPortfolio = async () => {
     if (!newPortfolioName.trim()) {
       alert('Please enter a portfolio name');
+      return;
+    }
+
+    // FIX 3: Check for duplicate portfolio names
+    const duplicatePortfolio = portfolios.find(
+      p => p.name.toLowerCase() === newPortfolioName.trim().toLowerCase()
+    );
+    
+    if (duplicatePortfolio) {
+      alert('❌ Portfolio name already exists! Please choose a different name.');
       return;
     }
 
@@ -131,35 +178,69 @@ const AdminPanel = ({ onClose }) => {
     }
   };
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUserName.trim()) {
       alert('Please enter a user name');
       return;
     }
 
-    if (users.includes(newUserName.trim())) {
+    if (users.some(user => user.name.toLowerCase() === newUserName.trim().toLowerCase())) {
       alert('User already exists');
       return;
     }
 
-    const updatedUsers = [...users, newUserName.trim()].sort();
-    setUsers(updatedUsers);
-    localStorage.setItem('monitoredPersonnel', JSON.stringify(updatedUsers));
-    addAdminLog('user_added', `Added user: ${newUserName.trim()}`);
-    setNewUserName('');
-    alert('✅ User added successfully!');
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('monitored_personnel')
+        .insert([{ name: newUserName.trim(), role: 'monitor' }])
+        .select();
+
+      if (error) throw error;
+
+      const inserted = data && data[0] ? data[0] : null;
+      if (inserted) {
+        setUsers(prev => [...prev, inserted].sort((a, b) => a.name.localeCompare(b.name)));
+        localStorage.setItem('monitoredPersonnel', JSON.stringify([...users.map(u => u.name), inserted.name]));
+        addAdminLog('user_added', `Added user: ${inserted.name}`);
+      }
+      setNewUserName('');
+      alert('✅ User added successfully!');
+    } catch (error) {
+      console.error('Error adding user:', error);
+      alert('❌ Error adding user: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteUser = (userName) => {
-    if (!window.confirm(`Are you sure you want to delete user "${userName}"?`)) {
+  const handleDeleteUser = async (user) => {
+    if (!window.confirm(`Are you sure you want to delete user "${user.name}"?`)) {
       return;
     }
 
-    const updatedUsers = users.filter(u => u !== userName);
-    setUsers(updatedUsers);
-    localStorage.setItem('monitoredPersonnel', JSON.stringify(updatedUsers));
-    addAdminLog('user_deleted', `Deleted user: ${userName}`);
-    alert('✅ User deleted successfully!');
+    setLoading(true);
+    try {
+      if (user.id && !String(user.id).startsWith('local-') && !String(user.id).startsWith('default-')) {
+        const { error } = await supabase
+          .from('monitored_personnel')
+          .delete()
+          .eq('id', user.id);
+
+        if (error) throw error;
+      }
+
+      const updatedUsers = users.filter(u => u.id !== user.id);
+      setUsers(updatedUsers);
+      localStorage.setItem('monitoredPersonnel', JSON.stringify(updatedUsers.map(u => u.name)));
+      addAdminLog('user_deleted', `Deleted user: ${user.name}`);
+      alert('✅ User deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('❌ Error deleting user: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddLog = async () => {
@@ -181,6 +262,14 @@ const AdminPanel = ({ onClose }) => {
     }
   };
 
+  const handleLogout = () => {
+    // Clear authentication
+    sessionStorage.removeItem('adminAuthenticated');
+    sessionStorage.removeItem('adminUsername');
+    alert('Logged out successfully!');
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -189,14 +278,24 @@ const AdminPanel = ({ onClose }) => {
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-2xl font-bold text-white">Admin Panel</h2>
-              <p className="text-gray-300 text-sm mt-1">Manage portfolios and users</p>
+              <p className="text-gray-300 text-sm mt-1">
+                Logged in as: <span className="font-semibold">{adminName}</span>
+              </p>
             </div>
-            <button
-              onClick={onClose}
-              className="text-white hover:text-gray-300 text-3xl font-bold leading-none"
-            >
-              ×
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-colors"
+              >
+                Logout
+              </button>
+              <button
+                onClick={onClose}
+                className="text-white hover:text-gray-300 text-3xl font-bold leading-none"
+              >
+                ×
+              </button>
+            </div>
           </div>
         </div>
 
@@ -334,10 +433,15 @@ const AdminPanel = ({ onClose }) => {
                   ) : (
                     users.map((user) => (
                       <div
-                        key={user}
+                        key={user.id || user.name}
                         className="flex justify-between items-center p-3 bg-gray-50 rounded border hover:bg-gray-100"
                       >
-                        <div className="font-medium text-gray-900">{user}</div>
+                        <div>
+                          <div className="font-medium text-gray-900">{user.name}</div>
+                          {user.role && (
+                            <div className="text-xs text-gray-500 mt-0.5">{user.role}</div>
+                          )}
+                        </div>
                         <button
                           onClick={() => handleDeleteUser(user)}
                           className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"

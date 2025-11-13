@@ -66,7 +66,7 @@ const HourlyCoverageChart = ({ issues }) => {
       return (
         <div className="bg-white p-3 shadow-lg rounded border">
           <p className="font-semibold">{data.hour}</p>
-          <p className="text-blue-600">Coverage: {data.coverage}%</p>
+          <p className="text-green-600">Coverage: {data.coverage}%</p>
           <p className="text-sm text-gray-600">Portfolios: {data.portfoliosChecked}/26</p>
           <p className="text-sm text-gray-600">Total Issues: {data.totalIssues}</p>
         </div>
@@ -107,7 +107,7 @@ const HourlyCoverageChart = ({ issues }) => {
             onClick={() => setDateRange('today')}
             className={`px-4 py-2 rounded text-sm font-medium ${
               dateRange === 'today'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-green-600 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
@@ -117,7 +117,7 @@ const HourlyCoverageChart = ({ issues }) => {
             onClick={() => setDateRange('week')}
             className={`px-4 py-2 rounded text-sm font-medium ${
               dateRange === 'week'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-green-600 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
@@ -127,7 +127,7 @@ const HourlyCoverageChart = ({ issues }) => {
             onClick={() => setDateRange('month')}
             className={`px-4 py-2 rounded text-sm font-medium ${
               dateRange === 'month'
-                ? 'bg-blue-600 text-white'
+                ? 'bg-green-600 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
@@ -192,7 +192,7 @@ const HourlyCoverageChart = ({ issues }) => {
               {chartData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`}
-                  fill={entry.coverage === 0 ? '#ef4444' : entry.coverage < 50 ? '#f59e0b' : '#3b82f6'}
+                  fill={entry.coverage === 0 ? '#ef4444' : entry.coverage < 50 ? '#f59e0b' : '#76AB3F'}
                 />
               ))}
             </Bar>

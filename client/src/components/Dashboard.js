@@ -10,26 +10,42 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [coverage, setCoverage] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  // FIX: Fetch data function that can be called multiple times
+  const fetchData = async () => {
+    try {
+      const [statsResponse, coverageResponse] = await Promise.all([
+        statsAPI.getStats(),
+        coverageAPI.getCoverage()
+      ]);
+      
+      setStats(statsResponse.data);
+      setCoverage(coverageResponse.data);
+      setLastRefresh(new Date());
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsResponse, coverageResponse] = await Promise.all([
-          statsAPI.getStats(),
-          coverageAPI.getCoverage()
-        ]);
-        
-        setStats(statsResponse.data);
-        setCoverage(coverageResponse.data);
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+    // Initial fetch
     fetchData();
+
+    // FIX: Auto-refresh every 30 seconds to show new issues
+    const refreshInterval = setInterval(() => {
+      fetchData();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(refreshInterval);
   }, []);
+
+  const handleCardClick = (title) => {
+    setModalTitle(title);
+    setShowActionModal(true);
+  };
 
   if (loading) {
     return (
@@ -41,11 +57,37 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-2 text-gray-600">
-          Overview of your portfolio issue tracking system
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-2 text-gray-600">
+            Overview of your portfolio issue tracking system
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Last updated: {lastRefresh.toLocaleTimeString()} (Auto-refreshes every 30 seconds)
+          </p>
+        </div>
+        
+        {/* FIX: Manual Refresh Button */}
+        <button
+          onClick={() => {
+            setLoading(true);
+            fetchData();
+          }}
+          className="flex items-center gap-2 px-5 py-2.5 text-white rounded-lg hover:opacity-90 transition-all shadow-md"
+          style={{ backgroundColor: '#76AB3F' }}
+          title="Click to refresh all data now"
+        >
+          <svg 
+            className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span className="text-sm font-medium">Refresh Dashboard</span>
+        </button>
       </div>
 
       {/* Stats Cards */}
@@ -157,7 +199,7 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Link
                 to="/log-issue"
-                className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary-500 rounded-lg border border-gray-300 hover:border-gray-400"
+                className="cursor-pointer relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary-500 rounded-lg border border-gray-300 hover:border-primary-500 hover:shadow-lg transition-all"
               >
                 <div>
                   <span className="rounded-lg inline-flex p-3 bg-primary-50 text-primary-700 ring-4 ring-white">
@@ -172,8 +214,13 @@ const Dashboard = () => {
                     Log New Issue
                   </h3>
                   <p className="mt-2 text-sm text-gray-500">
-                    Report a new issue for any portfolio site
+                    Report a new issue for any portfolio
                   </p>
+                </div>
+                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="bg-primary-100 text-primary-700 px-2 py-1 rounded text-xs font-medium">
+                    Click to log
+                  </div>
                 </div>
               </Link>
 
@@ -245,6 +292,13 @@ const Dashboard = () => {
           coverageData={coverage.coverage_by_hour} 
         />
       )}
+
+      {/* Action Modal */}
+      <ActionModal 
+        isOpen={showActionModal} 
+        onClose={() => setShowActionModal(false)}
+        title={modalTitle}
+      />
 
     </div>
   );

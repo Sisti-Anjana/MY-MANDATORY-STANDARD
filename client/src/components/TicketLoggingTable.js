@@ -21,11 +21,86 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     entered_by: 'System'
   });
 
+  const [submitError, setSubmitError] = useState(null);
+  const [submitSuccess, setSubmitSuccess] = useState(null);
+
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
   useEffect(() => {
     setFormData(prev => ({ ...prev, issue_hour: currentHour }));
   }, [currentHour]);
+
+  // Listen for pre-selection event from portfolio card
+  useEffect(() => {
+    const handlePreSelect = (event) => {
+      const { portfolio_id } = event.detail;
+      console.log('Pre-selecting portfolio:', portfolio_id);
+      setFormData(prev => ({ ...prev, portfolio_id }));
+      
+      // Highlight the form briefly
+      const formElement = document.getElementById('issue-log-form');
+      if (formElement) {
+        formElement.classList.add('ring-4', 'ring-green-400');
+        setTimeout(() => {
+          formElement.classList.remove('ring-4', 'ring-green-400');
+        }, 2000);
+      }
+    };
+
+    window.addEventListener('preSelectPortfolio', handlePreSelect);
+    return () => window.removeEventListener('preSelectPortfolio', handlePreSelect);
+  }, []);
+
+  // Create reservation when portfolio + hour + monitored_by are all selected
+  useEffect(() => {
+    const createReservation = async () => {
+      const { portfolio_id, issue_hour, monitored_by } = formData;
+      
+      if (portfolio_id && issue_hour !== '' && monitored_by) {
+        try {
+          const sessionId = localStorage.getItem('session_id') || `session-${Date.now()}`;
+          localStorage.setItem('session_id', sessionId);
+          
+          const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour from now
+          
+          // CRITICAL FIX: Delete ALL existing reservations for this portfolio/hour
+          // This ensures clean state regardless of who created the previous reservation
+          const { error: deleteError } = await supabase
+            .from('hour_reservations')
+            .delete()
+            .eq('portfolio_id', portfolio_id)
+            .eq('issue_hour', parseInt(issue_hour));
+          
+          if (deleteError) {
+            console.warn('⚠️ Error clearing old reservations:', deleteError);
+          } else {
+            console.log('🧹 Cleared ALL old reservations for this portfolio/hour');
+          }
+          
+          // Now create the new reservation with the current monitored_by
+          const { error: insertError } = await supabase
+            .from('hour_reservations')
+            .insert([{
+              portfolio_id,
+              issue_hour: parseInt(issue_hour),
+              monitored_by,
+              session_id: sessionId,
+              expires_at: expiresAt
+            }]);
+          
+          if (insertError) {
+            console.warn('⚠️ Reservation insert error:', insertError);
+          } else {
+            console.log('✅ New reservation created for', monitored_by, 'on', portfolio_id, 'hour', issue_hour);
+          }
+        } catch (error) {
+          console.error('❌ Error in reservation process:', error);
+        }
+      }
+    };
+
+    createReservation();
+  }, [formData.portfolio_id, formData.issue_hour, formData.monitored_by]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -38,9 +113,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     setFormData(prev => ({ ...prev, [name]: value }));
 
     if (name === 'issue_present') {
-      if (value === 'no') {
-        setFormData(prev => ({ ...prev, issue_details: 'No issue present' }));
-      } else if (value === 'yes') {
+      if (value === 'No') {
+        setFormData(prev => ({ ...prev, issue_details: 'No issue' }));
+      } else if (value === 'Yes') {
         setFormData(prev => ({ ...prev, issue_details: '' }));
       }
     }
@@ -60,14 +135,16 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     console.log('TICKET SUBMIT BUTTON CLICKED');
     console.log('Current formData:', JSON.stringify(formData, null, 2));
     console.log('==========================================');
+    setSubmitError(null);
+    setSubmitSuccess(null);
     
     // VALIDATION STEP 1: Portfolio
     if (!formData.portfolio_id || formData.portfolio_id === '') {
       console.error('VALIDATION FAILED: No portfolio selected');
-      alert('❌ ERROR: Please select a Portfolio');
+      alert('ERROR: Please select a Portfolio');
       return;
     }
-    console.log('✓ Portfolio validation passed:', formData.portfolio_id);
+    console.log('Portfolio validation passed:', formData.portfolio_id);
 
     // VALIDATION STEP 2: Issue Present (CRITICAL!)
     const issuePresent = String(formData.issue_present).trim();
@@ -79,15 +156,23 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       return;
     }
     
-    if (issuePresent !== 'yes' && issuePresent !== 'no') {
+    if (issuePresent !== 'Yes' && issuePresent !== 'No') {
       console.error('VALIDATION FAILED: issue_present has invalid value:', issuePresent);
-      alert(`❌ ERROR: Invalid Issue Present value. Must be "yes" or "no"`);
+      alert(`❌ ERROR: Invalid Issue Present value. Must be "Yes" or "No"`);
       return;
     }
     console.log('✓ Issue Present validation passed:', issuePresent);
 
-    // VALIDATION STEP 3: Issue Details (when yes)
-    if (issuePresent === 'yes' && (!formData.issue_details || formData.issue_details.trim() === '')) {
+    // VALIDATION STEP 3: Monitored By (MANDATORY!)
+    if (!formData.monitored_by || formData.monitored_by.trim() === '') {
+      console.error('VALIDATION FAILED: Monitored By is required');
+      alert('❌ ERROR: Monitored By is REQUIRED. Please select who monitored this hour.');
+      return;
+    }
+    console.log('✓ Monitored By validation passed:', formData.monitored_by);
+
+    // VALIDATION STEP 4: Issue Details (when yes)
+    if (issuePresent === 'Yes' && (!formData.issue_details || formData.issue_details.trim() === '')) {
       console.error('VALIDATION FAILED: No issue details when issue present is yes');
       alert('❌ ERROR: Please provide issue details when issue is present');
       return;
@@ -103,7 +188,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         issue_present: issuePresent, // GUARANTEED to be 'Yes' or 'No'
         issue_details: formData.issue_details && formData.issue_details.trim() !== '' 
           ? formData.issue_details.trim() 
-          : (issuePresent === 'no' ? 'No issue present' : null),
+          : (issuePresent === 'No' ? 'No issue' : null),
         case_number: formData.case_number && formData.case_number.trim() !== '' ? formData.case_number.trim() : null,
         monitored_by: formData.monitored_by && formData.monitored_by !== '' ? formData.monitored_by : null,
         issues_missed_by: formData.issues_missed_by && formData.issues_missed_by !== '' ? formData.issues_missed_by : null,
@@ -136,7 +221,20 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       console.log('Inserted data:', data);
       console.log('==========================================');
       
-      alert('✅ Issue logged successfully!');
+      setSubmitSuccess('Issue logged successfully!');
+      
+      // Clean up reservation after successful submit
+      const sessionId = localStorage.getItem('session_id');
+      if (sessionId && formData.portfolio_id && formData.issue_hour && formData.monitored_by) {
+        await supabase
+          .from('hour_reservations')
+          .delete()
+          .eq('portfolio_id', formData.portfolio_id)
+          .eq('issue_hour', parseInt(formData.issue_hour))
+          .eq('monitored_by', formData.monitored_by)
+          .eq('session_id', sessionId);
+        console.log('✅ Reservation cleaned up');
+      }
       
       // Reset form
       setFormData({
@@ -154,7 +252,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       onRefresh();
     } catch (error) {
       console.error('CATCH BLOCK - Error logging issue:', error);
-      alert('❌ Error logging issue: ' + error.message);
+      setSubmitError(error.message || 'Unable to log issue. Please try again.');
     }
   };
 
@@ -188,9 +286,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
   return (
     <div className="bg-white rounded-lg shadow">
       {/* SEARCH BAR - NEW FEATURE */}
-      <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+      <div className="p-4 bg-gradient-to-r from-green-50 to-lime-50 border-b">
         <div className="flex items-center gap-2 mb-2">
-          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <h3 className="text-sm font-semibold text-gray-700">Search Issues</h3>
@@ -200,7 +298,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           value={filters.searchText}
           onChange={(e) => handleFilterChange('searchText', e.target.value)}
           placeholder="Search by portfolio, issue details, case number, or monitored by..."
-          className="w-full px-4 py-2 border-2 border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          className="w-full px-4 py-2 border-2 border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
         />
         {filters.searchText && (
           <div className="mt-2 text-xs text-gray-600">
@@ -218,7 +316,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
               type="date"
               value={filters.dateFilter}
               onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
             />
           </div>
 
@@ -227,7 +325,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             <select
               value={filters.hourFilter}
               onChange={(e) => handleFilterChange('hourFilter', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
             >
               <option value="">All Hours</option>
               {hours.map(h => (
@@ -242,7 +340,8 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
               id="showAllIssues"
               checked={filters.showAllIssues}
               onChange={(e) => handleFilterChange('showAllIssues', e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              className="w-4 h-4 border-gray-300 rounded focus:ring-green-500"
+              style={{ accentColor: '#76AB3F' }}
             />
             <label htmlFor="showAllIssues" className="ml-2 text-sm font-medium text-gray-700">
               Show All Issues
@@ -277,20 +376,41 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
+            {(submitError || submitSuccess) && (
+              <tr>
+                <td colSpan="9" className="px-4 py-2">
+                  {submitError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded">
+                      {submitError}
+                    </div>
+                  )}
+                  {submitSuccess && (
+                    <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-3 py-2 rounded">
+                      {submitSuccess}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            )}
             {/* Log New Issue Row */}
-            <tr className="bg-blue-50">
+            <tr className="bg-green-50">
               <td className="px-4 py-3">
                 <select
                   name="portfolio_id"
                   value={formData.portfolio_id}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className={`w-full px-3 py-2 border rounded text-sm focus:ring-green-500 focus:border-green-500 ${
+                    formData.portfolio_id ? 'border-green-500 bg-green-50' : 'border-gray-300'
+                  }`}
                 >
                   <option value="">Select Portfolio</option>
                   {portfolios.map(p => (
                     <option key={p.portfolio_id} value={p.portfolio_id}>{p.name}</option>
                   ))}
                 </select>
+                {formData.portfolio_id && (
+                  <div className="text-xs text-green-600 mt-1">✓ Portfolio selected</div>
+                )}
               </td>
               <td className="px-4 py-3">
                 <input
@@ -308,11 +428,11 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   name="issue_present"
                   value={formData.issue_present}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="">Select</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
                 </select>
               </td>
               <td className="px-4 py-3">
@@ -333,7 +453,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   value={formData.case_number}
                   onChange={handleFormChange}
                   placeholder="Case #"
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
                 />
               </td>
               <td className="px-4 py-3">
@@ -341,9 +461,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   name="monitored_by"
                   value={formData.monitored_by}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  className="w-full px-3 py-2 border-2 border-red-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
                 >
-                  <option value="">Select Monitored By</option>
+                  <option value="">⚠️ REQUIRED - Select Monitor</option>
                   {monitoredPersonnel.map(person => (
                     <option key={person} value={person}>{person}</option>
                   ))}
@@ -364,7 +485,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   name="issues_missed_by"
                   value={formData.issues_missed_by}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
                 >
                   <option value="">Select</option>
                   {monitoredPersonnel.map(person => (
@@ -376,7 +497,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                 <button
                   onClick={handleSubmit}
                   type="button"
-                  className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 font-medium whitespace-nowrap"
+                  className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 font-medium whitespace-nowrap"
                 >
                   Log Ticket
                 </button>
@@ -401,15 +522,15 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   </td>
                   <td className="px-4 py-3 text-sm">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                      issue.issue_present === 'yes' 
+                      (issue.issue_present || '').toLowerCase() === 'yes' 
                         ? 'bg-red-100 text-red-800' 
                         : 'bg-green-100 text-green-800'
                     }`}>
-                      {issue.issue_present === 'yes' ? 'Yes' : 'No'}
+                      {(issue.issue_present || '').toLowerCase() === 'yes' ? 'Yes' : 'No'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">
-                    {issue.issue_details || 'No issue present'}
+                    {issue.issue_details || 'No issue'}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {issue.case_number || '-'}
@@ -439,7 +560,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   <td className="px-4 py-3 text-sm">
                     <button
                       onClick={() => onEditIssue(issue)}
-                      className="text-blue-600 hover:text-blue-800 font-medium"
+                      className="text-green-600 hover:text-green-800 font-medium"
                     >
                       Edit
                     </button>
