@@ -87,15 +87,20 @@ const SinglePage = () => {
     const latestIssue = portfolioIssues[0];
     const hoursDiff = currentHour - latestIssue.issue_hour;
 
-    if (hoursDiff < 1) {
+    // Handle negative hoursDiff (e.g., issue logged at hour 23, current hour is 0)
+    // In this case, treat as if it's from previous day, so it's 4h+
+    if (hoursDiff < 0 || hoursDiff >= 4) {
+      return { status: 'No Activity (4h+)', color: 'bg-red-50 border-red-200', textColor: 'text-red-700' };
+    } else if (hoursDiff < 1) {
       return { status: 'Updated (<1h)', color: 'bg-green-50 border-green-200', textColor: 'text-green-700' };
-    } else if (hoursDiff < 2) {
-      return { status: '1h', color: 'bg-blue-50 border-blue-200', textColor: 'text-blue-700' };
-    } else if (hoursDiff < 3) {
+    } else if (hoursDiff === 1) {
+      return { status: '1h Inactive', color: 'bg-blue-50 border-blue-200', textColor: 'text-blue-700' };
+    } else if (hoursDiff === 2) {
       return { status: '2h Inactive', color: 'bg-yellow-100 border-yellow-300', textColor: 'text-yellow-800' };
-    } else if (hoursDiff < 4) {
+    } else if (hoursDiff === 3) {
       return { status: '3h Inactive', color: 'bg-orange-100 border-orange-300', textColor: 'text-orange-800' };
     } else {
+      // Fallback for any other case (shouldn't happen, but just in case)
       return { status: 'No Activity (4h+)', color: 'bg-red-50 border-red-200', textColor: 'text-red-700' };
     }
   };
@@ -144,7 +149,7 @@ const SinglePage = () => {
   // Portfolio cards data
   const portfolioCards = [
     { name: 'Aurora', subtitle: 'Aurora', order: 1 },
-    { name: 'BESS & Trimark', subtitle: 'Multi Das', order: 2 },
+    { name: 'BESS & Trimark', subtitle: 'Multiple DAS', order: 2 },
     { name: 'Chint', subtitle: 'Chint', order: 3 },
     { name: 'eG/GByte/PD/GPM', subtitle: 'Multiple DAS', order: 4 },
     { name: 'Guarantee Sites', subtitle: 'Powertrack', order: 5 },

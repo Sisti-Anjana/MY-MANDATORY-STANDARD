@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 
-const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue }) => {
+const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onDeleteIssue, isAdmin = false }) => {
   const [filters, setFilters] = useState({
     showMissedOnly: false,
     missedBy: '',
@@ -10,6 +10,15 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue }) =
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  
+  // Performance Analytics Period Filtering
+  const [analyticsPeriod, setAnalyticsPeriod] = useState('all'); // 'all', 'month', 'quarter', 'custom'
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedQuarter, setSelectedQuarter] = useState('');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [selectedUserForAnalytics, setSelectedUserForAnalytics] = useState(''); // Individual user filter
 
   const filteredIssues = useMemo(() => {
     let filtered = [...issues];
@@ -67,22 +76,72 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue }) =
     };
   }, [issues]);
 
+  // Filter issues based on analytics period
+  const filteredIssuesForAnalytics = useMemo(() => {
+    let filtered = [...issues];
+    
+    // Apply period filter
+    if (analyticsPeriod === 'month' && selectedMonth) {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+      
+      filtered = filtered.filter(issue => {
+        const issueDate = new Date(issue.created_at);
+        return issueDate >= startDate && issueDate <= endDate;
+      });
+    } else if (analyticsPeriod === 'quarter' && selectedQuarter) {
+      const quarter = parseInt(selectedQuarter);
+      const startMonth = (quarter - 1) * 3;
+      const startDate = new Date(selectedYear, startMonth, 1);
+      const endDate = new Date(selectedYear, startMonth + 3, 0, 23, 59, 59, 999);
+      
+      filtered = filtered.filter(issue => {
+        const issueDate = new Date(issue.created_at);
+        return issueDate >= startDate && issueDate <= endDate;
+      });
+    } else if (analyticsPeriod === 'custom' && customStartDate && customEndDate) {
+      const start = new Date(customStartDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+      
+      filtered = filtered.filter(issue => {
+        const issueDate = new Date(issue.created_at);
+        return issueDate >= start && issueDate <= end;
+      });
+    }
+    
+    // Apply individual user filter if selected
+    if (selectedUserForAnalytics) {
+      filtered = filtered.filter(issue => 
+        issue.monitored_by === selectedUserForAnalytics || 
+        issue.issues_missed_by === selectedUserForAnalytics
+      );
+    }
+    
+    return filtered;
+  }, [issues, analyticsPeriod, selectedMonth, selectedQuarter, selectedYear, customStartDate, customEndDate, selectedUserForAnalytics]);
+
   // FIX 4: Hourly Report Card with User Performance Analytics
   const userPerformanceAnalytics = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
+    // Use filtered issues for analytics
+    const analyticsIssues = filteredIssuesForAnalytics;
+    
     // Get all unique users from both monitored_by and issues_missed_by
     const allUsers = new Set();
-    issues.forEach(issue => {
+    analyticsIssues.forEach(issue => {
       if (issue.monitored_by) allUsers.add(issue.monitored_by);
       if (issue.issues_missed_by) allUsers.add(issue.issues_missed_by);
     });
 
     // Calculate performance for each user
     const userStats = Array.from(allUsers).map(userName => {
-      const monitoredIssues = issues.filter(issue => issue.monitored_by === userName);
-      const missedIssues = issues.filter(issue => issue.issues_missed_by === userName);
+      const monitoredIssues = analyticsIssues.filter(issue => issue.monitored_by === userName);
+      const missedIssues = analyticsIssues.filter(issue => issue.issues_missed_by === userName);
       const issuesFoundByUser = monitoredIssues.filter(issue => issue.issue_present?.toLowerCase() === 'yes');
       
       // Calculate hourly breakdown (0-23)
@@ -123,7 +182,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue }) =
     });
 
     return userStats.sort((a, b) => b.totalMonitored - a.totalMonitored);
-  }, [issues]);
+  }, [filteredIssuesForAnalytics]);
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -369,38 +428,175 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue }) =
             <h3 className="text-xl font-bold text-gray-900">User Performance Analytics</h3>
             <p className="text-sm text-gray-600">Individual hourly monitoring performance and statistics</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:flex-wrap lg:flex-nowrap lg:gap-4 w-full lg:w-auto">
-            <div className="flex items-center gap-2 w-full sm:w-72 lg:w-80">
-              <div className="relative flex-1">
-                <svg className="w-4 h-4 text-purple-600 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  value={userSearchQuery}
-                  onChange={(e) => setUserSearchQuery(e.target.value)}
-                  placeholder="Search users by name..."
-                  className="w-full pl-9 pr-8 py-2 border-2 border-purple-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
-                />
-                {userSearchQuery && (
-                  <button
-                    onClick={() => setUserSearchQuery('')}
-                    className="absolute inset-y-0 right-0 px-3 text-xs text-red-600 hover:text-red-800 font-semibold"
-                    type="button"
-                  >
-                    Clear
-                  </button>
-                )}
+        </div>
+
+        {/* Period Filter Controls */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border-2 border-blue-200 mb-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <label className="text-sm font-bold text-gray-700">📅 Period Filter</label>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Period Type Selector */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Period Type</label>
+                <select
+                  value={analyticsPeriod}
+                  onChange={(e) => {
+                    setAnalyticsPeriod(e.target.value);
+                    setSelectedMonth('');
+                    setSelectedQuarter('');
+                    setCustomStartDate('');
+                    setCustomEndDate('');
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">All Time</option>
+                  <option value="month">By Month</option>
+                  <option value="quarter">By Quarter</option>
+                  <option value="custom">Custom Period</option>
+                </select>
+              </div>
+
+              {/* Month Selector */}
+              {analyticsPeriod === 'month' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Select Month</label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              )}
+
+              {/* Quarter Selector */}
+              {analyticsPeriod === 'quarter' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Select Quarter</label>
+                    <select
+                      value={selectedQuarter}
+                      onChange={(e) => setSelectedQuarter(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Select Quarter</option>
+                      <option value="1">Q1 (Jan-Mar)</option>
+                      <option value="2">Q2 (Apr-Jun)</option>
+                      <option value="3">Q3 (Jul-Sep)</option>
+                      <option value="4">Q4 (Oct-Dec)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Year</label>
+                    <input
+                      type="number"
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(parseInt(e.target.value) || new Date().getFullYear())}
+                      min="2020"
+                      max={new Date().getFullYear() + 1}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Custom Period Selector */}
+              {analyticsPeriod === 'custom' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      min={customStartDate}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Individual User Selector */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Filter by User (Optional)</label>
+                <select
+                  value={selectedUserForAnalytics}
+                  onChange={(e) => setSelectedUserForAnalytics(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All Users</option>
+                  {Array.from(new Set([
+                    ...issues.map(i => i.monitored_by).filter(Boolean),
+                    ...issues.map(i => i.issues_missed_by).filter(Boolean)
+                  ])).sort().map(user => (
+                    <option key={user} value={user}>{user}</option>
+                  ))}
+                </select>
               </div>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: '#E8F5E0' }}>
-              <svg className="w-5 h-5" style={{ color: '#76AB3F' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+
+            {/* Period Summary */}
+            {(analyticsPeriod !== 'all' || selectedUserForAnalytics) && (
+              <div className="mt-2 p-2 bg-blue-100 rounded text-xs text-gray-700">
+                <strong>Showing:</strong> {
+                  analyticsPeriod === 'month' && selectedMonth ? `Month: ${new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` :
+                  analyticsPeriod === 'quarter' && selectedQuarter ? `Q${selectedQuarter} ${selectedYear}` :
+                  analyticsPeriod === 'custom' && customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` :
+                  'All Time'
+                }
+                {selectedUserForAnalytics && ` | User: ${selectedUserForAnalytics}`}
+                {` | ${filteredIssuesForAnalytics.length} issues`}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:flex-wrap lg:flex-nowrap lg:gap-4 w-full lg:w-auto mb-6">
+          <div className="flex items-center gap-2 w-full sm:w-72 lg:w-80">
+            <div className="relative flex-1">
+              <svg className="w-4 h-4 text-purple-600 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span className="text-sm font-semibold" style={{ color: '#76AB3F' }}>
-                {hasUserSearch ? filteredUsers.length : 0} Matching Users
-              </span>
+              <input
+                type="text"
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                placeholder="Search users by name..."
+                className="w-full pl-9 pr-8 py-2 border-2 border-purple-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
+              />
+              {userSearchQuery && (
+                <button
+                  onClick={() => setUserSearchQuery('')}
+                  className="absolute inset-y-0 right-0 px-3 text-xs text-red-600 hover:text-red-800 font-semibold"
+                  type="button"
+                >
+                  Clear
+                </button>
+              )}
             </div>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: '#E8F5E0' }}>
+            <svg className="w-5 h-5" style={{ color: '#76AB3F' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <span className="text-sm font-semibold" style={{ color: '#76AB3F' }}>
+              {hasUserSearch ? filteredUsers.length : 0} Matching Users
+            </span>
           </div>
         </div>
 
@@ -747,15 +943,29 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue }) =
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <button
-                        onClick={() => onEditIssue(issue)}
-                        className="px-3 py-1.5 text-white rounded font-medium transition-colors text-sm"
-                        style={{ backgroundColor: '#76AB3F' }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#5a8f2f'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = '#76AB3F'}
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onEditIssue(issue)}
+                          className="px-3 py-1.5 text-white rounded font-medium transition-colors text-sm"
+                          style={{ backgroundColor: '#76AB3F' }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#5a8f2f'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = '#76AB3F'}
+                        >
+                          Edit
+                        </button>
+                        {isAdmin && onDeleteIssue && (
+                          <button
+                            onClick={() => onDeleteIssue(issue)}
+                            className="px-3 py-1.5 text-white rounded font-medium transition-colors text-sm"
+                            style={{ backgroundColor: '#dc2626' }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
+                            title="Delete this issue (Admin only)"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

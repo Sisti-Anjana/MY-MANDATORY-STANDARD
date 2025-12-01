@@ -154,13 +154,13 @@ const EditIssueModal = ({ issue, portfolios, sites, monitoredPersonnel, onClose,
                   value={formData.monitored_by}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 border-2 border-red-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled
+                  className="w-full px-3 py-2 border-2 border-gray-300 rounded text-sm bg-gray-100 cursor-not-allowed"
+                  title="Monitored By cannot be changed when editing issues"
                 >
-                  <option value="">⚠️ REQUIRED - Select Monitor</option>
-                  {monitoredPersonnel.map(person => (
-                    <option key={person} value={person}>{person}</option>
-                  ))}
+                  <option value={formData.monitored_by}>{formData.monitored_by || '⚠️ REQUIRED - Select Monitor'}</option>
                 </select>
+                <p className="mt-1 text-xs text-gray-500">⚠️ Monitored By is fixed and cannot be changed when editing</p>
               </div>
             </div>
 

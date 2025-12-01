@@ -38,33 +38,68 @@ const IssueForm = () => {
     // Fetch users from localStorage
     const fetchUsers = () => {
       const storedUsers = localStorage.getItem('monitoredPersonnel');
+      let usersList = [];
+      
       if (storedUsers) {
-        setUsers(JSON.parse(storedUsers));
+        usersList = JSON.parse(storedUsers);
       } else {
         // Default users if none exist
-        const defaultUsers = [
+        usersList = [
           'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L', 
           'jenny', 'Kumar S', 'Lakshmi B', 'Manoj D', 'Rajesh K',
           'Ravi T', 'Vikram N'
         ];
-        setUsers(defaultUsers);
       }
+      
+      // CRITICAL FIX: Add logged-in user to the list if not present
+      const loggedInUser = sessionStorage.getItem('username') || 
+                          sessionStorage.getItem('fullName');
+      
+      if (loggedInUser && !usersList.includes(loggedInUser)) {
+        console.log('✅ Adding logged-in user to monitored personnel list:', loggedInUser);
+        usersList.unshift(loggedInUser); // Add to beginning of list
+      }
+      
+      setUsers(usersList);
+    };
+
+    // AUTO-POPULATE MONITORED_BY WITH LOGGED-IN USER
+    const autoSetMonitoredBy = () => {
+      // Get logged-in user from sessionStorage
+      const loggedInUser = sessionStorage.getItem('username') || 
+                          sessionStorage.getItem('fullName') || 
+                          'LibsysAdmin'; // Fallback default
+      
+      console.log('👤 Auto-setting monitored_by to:', loggedInUser);
+      
+      // Set the monitored_by field automatically
+      setFormData(prev => ({
+        ...prev,
+        monitored_by: loggedInUser
+      }));
     };
 
     fetchPortfolios();
     fetchUsers();
+    autoSetMonitoredBy(); // Automatically set the logged-in user
   }, []);
 
-  // FIX 1: Reset monitored_by when portfolio changes
+  // FIX 1: Reset form fields when portfolio changes (but preserve monitored_by)
   const [prevPortfolioId, setPrevPortfolioId] = useState('');
   
   useEffect(() => {
     // Only reset if portfolio actually changed (not initial load)
     if (formData.portfolio_id && formData.portfolio_id !== prevPortfolioId && prevPortfolioId !== '') {
       console.log('Portfolio changed from', prevPortfolioId, 'to', formData.portfolio_id);
+      
+      // Get logged-in user to preserve
+      const loggedInUser = sessionStorage.getItem('username') || 
+                          sessionStorage.getItem('fullName') || 
+                          'LibsysAdmin';
+      
       setFormData(prev => ({
         ...prev,
-        monitored_by: '',
+        monitored_by: loggedInUser, // Preserve logged-in user
         issue_hour: '',
         issue_present: '',
         issue_details: '',
@@ -177,13 +212,18 @@ const IssueForm = () => {
       setReservation(null);
       setReservationError(null);
       
+      // Get logged-in user to preserve after reset
+      const loggedInUser = sessionStorage.getItem('username') || 
+                          sessionStorage.getItem('fullName') || 
+                          'LibsysAdmin';
+      
       setFormData({
         portfolio_id: '',
         issue_hour: '',
         issue_present: '',
         issue_details: '',
         case_number: '',
-        monitored_by: '',
+        monitored_by: loggedInUser, // Keep logged-in user selected
         issues_missed_by: ''
       });
     } catch (error) {
@@ -199,13 +239,19 @@ const IssueForm = () => {
     setSubmitted(false);
     setReservation(null);
     setReservationError(null);
+    
+    // Get logged-in user to preserve after reset
+    const loggedInUser = sessionStorage.getItem('username') || 
+                        sessionStorage.getItem('fullName') || 
+                        'LibsysAdmin';
+    
     setFormData({
       portfolio_id: '',
       issue_hour: '',
       issue_present: '',
       issue_details: '',
       case_number: '',
-      monitored_by: '',
+      monitored_by: loggedInUser, // Keep logged-in user selected
       issues_missed_by: ''
     });
   };

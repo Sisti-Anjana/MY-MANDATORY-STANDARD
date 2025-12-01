@@ -1,0 +1,49 @@
+================================================
+  HOW TO RUN THE DEPLOYMENT SCRIPT
+================================================
+
+If double-clicking opens the file in an editor instead of running it,
+use one of these methods:
+
+METHOD 1: Right-Click Menu (Easiest)
+-------------------------------------
+1. Right-click on "DEPLOY_TO_NETLIFY.bat"
+2. Select "Run as administrator"
+3. Click "Yes" if Windows asks for permission
+4. The script will run in a command window
+
+METHOD 2: From Command Prompt
+------------------------------
+1. Press Windows Key + R
+2. Type: cmd
+3. Press Enter
+4. Type these commands (one at a time, press Enter after each):
+
+   cd "C:\Users\LibsysAdmin\OneDrive - Libsys IT Services Private Limited\Desktop\Updated deploy"
+   
+   DEPLOY_TO_NETLIFY.bat
+
+METHOD 3: Use PowerShell
+-------------------------
+1. Press Windows Key + X
+2. Select "Windows PowerShell" or "Terminal"
+3. Type these commands:
+
+   cd "C:\Users\LibsysAdmin\OneDrive - Libsys IT Services Private Limited\Desktop\Updated deploy"
+   
+   .\DEPLOY_TO_NETLIFY.bat
+
+METHOD 4: Run from File Explorer Address Bar
+---------------------------------------------
+1. Open File Explorer
+2. Navigate to the folder containing DEPLOY_TO_NETLIFY.bat
+3. Click in the address bar at the top
+4. Type: cmd
+5. Press Enter
+6. Type: DEPLOY_TO_NETLIFY.bat
+7. Press Enter
+
+================================================
+  RECOMMENDED: Use METHOD 1 (Right-Click)
+================================================
+

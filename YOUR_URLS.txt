@@ -1,0 +1,49 @@
+========================================
+   YOUR APPLICATION URLS
+========================================
+
+✅ CURRENTLY DEPLOYED (Frontend):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 https://cleanleaf.netlify.app
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This is your MAIN APPLICATION URL that is LIVE RIGHT NOW!
+
+You can:
+- Visit it in your browser
+- Share it with your team
+- Use it immediately
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⏳ TO GET SINGLE URL (Frontend + Backend):
+
+If you want ONE URL for both frontend and backend:
+
+1. Run: DEPLOY_SINGLE_URL.bat
+2. Deploy to Vercel
+3. You'll get: https://portfolio-issue-tracker.vercel.app
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 WHERE TO FIND YOUR URLS:
+
+NETLIFY (Current Frontend):
+- Dashboard: https://app.netlify.com
+- Your site: cleanleaf
+- URL shown at top of site page
+
+VERCEL (For Single URL):
+- Dashboard: https://vercel.com/dashboard
+- After deployment, URL shown in terminal
+- Or check project settings
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 QUICK ACCESS:
+
+Your Live Application:
+👉 https://cleanleaf.netlify.app
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

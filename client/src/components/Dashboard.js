@@ -67,47 +67,26 @@ const Dashboard = () => {
             Last updated: {lastRefresh.toLocaleTimeString()} (Auto-refreshes every 30 seconds)
           </p>
         </div>
-        
-        {/* FIX: Manual Refresh Button */}
-        <button
-          onClick={() => {
-            setLoading(true);
-            fetchData();
-          }}
-          className="flex items-center gap-2 px-5 py-2.5 text-white rounded-lg hover:opacity-90 transition-all shadow-md"
-          style={{ backgroundColor: '#76AB3F' }}
-          title="Click to refresh all data now"
-        >
-          <svg 
-            className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          <span className="text-sm font-medium">Refresh Dashboard</span>
-        </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Stats Cards - 7-column Layout */}
+      <div className="w-full mx-auto grid grid-cols-7 gap-1.5 px-1">
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
+          <div className="p-1">
+            <div className="flex items-center space-x-1">
               <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-primary-500 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-4 h-4 bg-primary-500 rounded flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
+              <div className="min-w-0">
+                <dl className="truncate">
+                  <dt className="text-[10px] font-medium text-gray-500 truncate">
                     Total Issues
                   </dt>
-                  <dd className="text-lg font-medium text-gray-900">
+                  <dd className="text-xs font-medium text-gray-900">
                     {stats?.total_issues || 0}
                   </dd>
                 </dl>
@@ -117,21 +96,21 @@ const Dashboard = () => {
         </div>
 
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-3 sm:p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
+              <div className="min-w-0">
+                <dl className="truncate">
+                  <dt className="text-[10px] font-medium text-gray-500 truncate">
                     Portfolios with Issues
                   </dt>
-                  <dd className="text-lg font-medium text-gray-900">
+                  <dd className="text-xs font-medium text-gray-900">
                     {stats?.portfolios_with_issues || 0}
                   </dd>
                 </dl>
@@ -141,21 +120,21 @@ const Dashboard = () => {
         </div>
 
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-3 sm:p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
+              <div className="min-w-0">
+                <dl className="truncate">
+                  <dt className="text-[10px] font-medium text-gray-500 truncate">
                     Sites with Issues
                   </dt>
-                  <dd className="text-lg font-medium text-gray-900">
+                  <dd className="text-xs font-medium text-gray-900">
                     {stats?.sites_with_issues || 0}
                   </dd>
                 </dl>
@@ -165,21 +144,21 @@ const Dashboard = () => {
         </div>
 
         <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="p-3 sm:p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
+              <div className="min-w-0">
+                <dl className="truncate">
+                  <dt className="text-[10px] font-medium text-gray-500 truncate">
                     Avg Issue Hour
                   </dt>
-                  <dd className="text-lg font-medium text-gray-900">
+                  <dd className="text-xs font-medium text-gray-900">
                     {stats?.avg_issue_hour ? Math.round(stats.avg_issue_hour) : 0}
                   </dd>
                 </dl>

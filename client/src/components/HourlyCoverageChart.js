@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-const HourlyCoverageChart = ({ issues }) => {
+const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
   const [dateRange, setDateRange] = useState('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -44,10 +44,11 @@ const HourlyCoverageChart = ({ issues }) => {
     }
 
     // Calculate coverage by hour
+    const totalPortfolios = portfolios.length || 1; // Use actual portfolio count, avoid division by zero
     const hourlyData = Array.from({ length: 24 }, (_, hour) => {
       const hourIssues = filteredIssues.filter(issue => issue.issue_hour === hour);
       const uniquePortfolios = new Set(hourIssues.map(issue => issue.portfolio_name));
-      const coverage = (uniquePortfolios.size / 26) * 100; // 26 total portfolios
+      const coverage = (uniquePortfolios.size / totalPortfolios) * 100;
       
       return {
         hour: `${hour}:00`,
@@ -58,8 +59,9 @@ const HourlyCoverageChart = ({ issues }) => {
     });
 
     return hourlyData;
-  }, [issues, dateRange, startDate, endDate]);
+  }, [issues, portfolios, dateRange, startDate, endDate]);
 
+  const totalPortfolios = portfolios.length || 1;
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -67,7 +69,7 @@ const HourlyCoverageChart = ({ issues }) => {
         <div className="bg-white p-3 shadow-lg rounded border">
           <p className="font-semibold">{data.hour}</p>
           <p className="text-green-600">Coverage: {data.coverage}%</p>
-          <p className="text-sm text-gray-600">Portfolios: {data.portfoliosChecked}/26</p>
+          <p className="text-sm text-gray-600">Portfolios: {data.portfoliosChecked}/{totalPortfolios}</p>
           <p className="text-sm text-gray-600">Total Issues: {data.totalIssues}</p>
         </div>
       );

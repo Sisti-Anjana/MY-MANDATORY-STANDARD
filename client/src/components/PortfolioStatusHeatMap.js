@@ -100,20 +100,41 @@ const PortfolioStatusHeatMap = () => {
     );
   };
 
-  // Hours since last activity for a portfolio (based on latest issue timestamp)
+  // Hours since last activity for a portfolio (based on hour difference, not time difference)
+  // Uses currentHour - issue_hour to calculate the difference
   const getHoursSinceLastActivity = (portfolioId) => {
-    const portfolioIssues = issues.filter(issue => issue.portfolio_id === portfolioId);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Filter issues for today only
+    const portfolioIssues = issues.filter(issue => {
+      if (issue.portfolio_id !== portfolioId) return false;
+      const issueDate = new Date(issue.created_at);
+      issueDate.setHours(0, 0, 0, 0);
+      return issueDate.getTime() === today.getTime();
+    });
+    
     if (portfolioIssues.length === 0) return Infinity; // Treat no activity as 4h+
-    const mostRecent = portfolioIssues.reduce((latest, curr) => {
-      const currTime = new Date(curr.created_at).getTime();
-      return currTime > latest ? currTime : latest;
-    }, 0);
-    const hours = (Date.now() - mostRecent) / 36e5;
-    return Math.floor(hours);
+    
+    // Sort by created_at to get the most recent issue
+    const sortedIssues = portfolioIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const latestIssue = sortedIssues[0];
+    
+    // Calculate hour difference: currentHour - issue_hour
+    const hoursDiff = currentHour - latestIssue.issue_hour;
+    
+    // Handle negative hoursDiff (e.g., issue logged at hour 23, current hour is 0)
+    // In this case, treat as if it's from previous day, so it's 4h+
+    if (hoursDiff < 0) {
+      return Infinity; // Previous day = 4h+
+    }
+    
+    return hoursDiff;
   };
 
-  // Determine if a portfolio is "updated" recently (within the last hour)
+  // Determine if a portfolio is "updated" recently (within the current hour)
   // IMPORTANT: Card will only be green if all_sites_checked is TRUE
+  // Uses hour-based logic: issue_hour === currentHour means updated
   const isPortfolioUpdated = (portfolioId) => {
     // First check: Find the portfolio and check if all_sites_checked is true
     const portfolio = portfolios.find(p => (p.portfolio_id || p.id) === portfolioId);
@@ -125,45 +146,38 @@ const PortfolioStatusHeatMap = () => {
       return false;
     }
     
-    // If all_sites_checked is true, proceed with existing time-based logic
-    const oneHourMs = 60 * 60 * 1000;
-    const now = Date.now();
+    // If all_sites_checked is true, check if there's an issue logged in the current hour
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
-    // DEBUG: Log portfolio checking
-    const portfolioIssues = issues.filter(issue => issue.portfolio_id === portfolioId);
-    console.log(`🔍 Checking portfolio ID: ${portfolioId}`);
-    console.log(`✅ all_sites_checked = TRUE`);
-    console.log(`📊 Found ${portfolioIssues.length} issues for this portfolio`);
+    // Filter issues for today only
+    const todayIssues = issues.filter(issue => {
+      if (issue.portfolio_id !== portfolioId) return false;
+      const issueDate = new Date(issue.created_at);
+      issueDate.setHours(0, 0, 0, 0);
+      return issueDate.getTime() === today.getTime();
+    });
     
-    if (portfolioIssues.length > 0) {
-      portfolioIssues.forEach(issue => {
-        const timeDiff = now - new Date(issue.created_at).getTime();
-        console.log(`  ⏰ Issue created: ${new Date(issue.created_at).toLocaleString()}`);
-        console.log(`  ⏱️ Time diff: ${Math.floor(timeDiff / 1000 / 60)} minutes ago`);
-        console.log(`  ✅ Within 1 hour? ${timeDiff < oneHourMs}`);
-        console.log(`  👤 Monitored by: ${issue.monitored_by}`);
-      });
-    }
+    // Check if any issue was logged in the current hour
+    const result = todayIssues.some(issue => issue.issue_hour === currentHour);
     
-    const result = issues.some(issue => (
-      issue.portfolio_id === portfolioId &&
-      (now - new Date(issue.created_at).getTime()) < oneHourMs &&
-      (issue.case_number || issue.monitored_by || true)
-    ));
-    
-    console.log(`🎯 Portfolio ${portfolioId} final status: ${result} (all_sites_checked=${allSitesChecked})`);
+    console.log(`🎯 Portfolio ${portfolioId} (${portfolio?.name}): updated=${result} (all_sites_checked=${allSitesChecked}, currentHour=${currentHour})`);
     return result;
   };
 
-  // Get color based on issue count
+  // Get color based on hour difference (hoursSince = currentHour - issue_hour)
   const getColorClass = (hoursSince) => {
-    // Mapping by inactivity hours:
-    // 4h+ => red, 3h => orange, 2h => yellow, 1h => grey, <1h handled as "Updated" (green)
+    // Mapping by inactivity hours based on hour difference:
+    // 4h+ or negative (previous day) => red
+    // 3h => orange
+    // 2h => yellow
+    // 1h => gray/blue
+    // <1h (0) => handled as "Updated" (green) - not used here as updated check is separate
     if (hoursSince >= 4 || hoursSince === Infinity) return 'bg-red-200 text-red-800';
     if (hoursSince === 3) return 'bg-orange-200 text-orange-800';
     if (hoursSince === 2) return 'bg-yellow-200 text-yellow-800';
     if (hoursSince === 1) return 'bg-gray-200 text-gray-800';
-    // Fallback to red when unmapped
+    // Fallback to red when unmapped (shouldn't happen, but safety)
     return 'bg-red-200 text-red-800';
   };
 
@@ -186,74 +200,58 @@ const PortfolioStatusHeatMap = () => {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 overflow-visible">
+    <div className="bg-white shadow rounded-lg p-4 overflow-visible">
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h3 className="text-lg font-medium text-gray-900">
-            Portfolio Status Heat Map
-          </h3>
-          <p className="text-sm text-gray-600 mt-1">
-            Time since last activity per portfolio (Current Hour: {currentHour}:00). Hover to see who's monitoring.
+          <h3 className="text-base font-medium text-gray-900">Portfolio Status</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Current Hour: {currentHour}:00 | Hover for monitor | Auto-refreshes every 30 seconds
           </p>
         </div>
-        
-        {/* FIX: Manual Refresh Button */}
-        <button
-          onClick={() => {
-            setLoading(true);
-            fetchData();
-          }}
-          className="flex items-center gap-2 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-all shadow-md"
-          style={{ backgroundColor: '#76AB3F' }}
-          title="Click to refresh now"
-        >
-          <svg 
-            className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          <span className="text-sm font-medium">Refresh</span>
-        </button>
       </div>
       
       {/* Last refresh time */}
-      <p className="text-xs text-gray-500 mb-4">
-        Last updated: {lastRefresh.toLocaleTimeString()} (Auto-refreshes every 30 seconds)
+      <p className="text-[10px] text-gray-400 mb-2">
+        Updated: {lastRefresh.toLocaleTimeString()}
       </p>
       
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 mb-6">
+      {/* Legend and Controls */}
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+        <div className="flex flex-wrap gap-2 text-xs">
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-red-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">No Activity (4h+)</span>
+          <div className="w-3 h-3 bg-red-200 rounded mr-1"></div>
+          <span className="text-gray-600">4h+</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-orange-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">3h</span>
+          <div className="w-3 h-3 bg-orange-200 rounded mr-1"></div>
+          <span className="text-gray-600">3h</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-yellow-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">2h</span>
+          <div className="w-3 h-3 bg-yellow-200 rounded mr-1"></div>
+          <span className="text-gray-600">2h</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-gray-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">1h</span>
+          <div className="w-3 h-3 bg-gray-200 rounded mr-1"></div>
+          <span className="text-gray-600">1h</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 rounded mr-2" style={{ backgroundColor: '#9333EA' }}></div>
-          <span className="text-sm text-gray-600">Logging Issue...</span>
+          <div className="w-3 h-3 rounded mr-1" style={{ backgroundColor: '#9333EA' }}></div>
+          <span className="text-gray-600">Logging</span>
         </div>
-        <div className="flex items-center">
-          <div className="w-4 h-4 rounded mr-2" style={{ backgroundColor: '#76AB3F' }}></div>
-          <span className="text-sm text-gray-600">Updated (&lt;1h)</span>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded mr-1" style={{ backgroundColor: '#76AB3F' }}></div>
+            <span className="text-gray-600">Updated</span>
+          </div>
+        </div>
+        
+        {/* Last refresh time */}
+        <div className="text-[10px] text-gray-500">
+          Updated: {lastRefresh.toLocaleTimeString()}
         </div>
       </div>
 
-      {/* Portfolio Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 relative">
+      {/* Ultra Compact Portfolio Grid - Optimized for space */}
+      <div className="grid grid-cols-12 sm:grid-cols-16 md:grid-cols-20 lg:grid-cols-24 xl:grid-cols-28 2xl:grid-cols-32 gap-0.5 relative">
         {portfolios.map(portfolio => {
           // FIX: Use portfolio_id instead of id (Supabase uses portfolio_id)
           const portfolioId = portfolio.portfolio_id || portfolio.id;
@@ -262,22 +260,34 @@ const PortfolioStatusHeatMap = () => {
           const beingLogged = isPortfolioBeingLogged(portfolioId);
           const statusText = beingLogged ? 'Logging Issue...' : getStatusText(hoursSince, updated);
           const currentUser = getUserForCurrentHour(portfolioId);
-          const isLocked = portfolio.is_locked || portfolio.locked; // Check if portfolio is locked
+          
+          // Check if portfolio is locked by checking active reservations
+          const isLocked = activeReservations.some(
+            res => String(res.portfolio_id) === String(portfolioId) || 
+                  String(res.portfolios?.portfolio_id) === String(portfolioId) ||
+                  String(res.portfolio?.portfolio_id) === String(portfolioId)
+          );
           
           // Determine background color and text color
           let bgColor, textColor, inlineStyle = {};
-          if (beingLogged) {
-            // PRIORITY 1: Being logged (violet/purple background) - like locked state
+          
+          if (isLocked) {
+            // PRIORITY 1: Locked state (purple background)
             bgColor = '';
             textColor = 'text-white';
             inlineStyle = { backgroundColor: '#9333EA' }; // Purple-600 color
+          } else if (beingLogged) {
+            // PRIORITY 2: Being logged (blue background)
+            bgColor = '';
+            textColor = 'text-white';
+            inlineStyle = { backgroundColor: '#3B82F6' }; // Blue-500 color
           } else if (updated) {
-            // PRIORITY 2: Updated (green background)
+            // PRIORITY 3: Updated (green background)
             bgColor = '';
             textColor = 'text-white';
             inlineStyle = { backgroundColor: '#76AB3F' };
           } else {
-            // PRIORITY 3: Inactive states (red, orange, yellow, gray)
+            // PRIORITY 4: Inactive states (red, orange, yellow, gray)
             const colorClass = getColorClass(hoursSince);
             bgColor = colorClass;
             textColor = '';
@@ -291,32 +301,30 @@ const PortfolioStatusHeatMap = () => {
                 tooltip-container
                 ${bgColor}
                 ${textColor}
-                p-4 rounded-lg hover:shadow-lg hover:scale-105 transition-all cursor-pointer relative group
-                ${isLocked ? 'border-4 border-purple-600' : 'border-2 border-gray-200'}
+                p-0 hover:bg-gray-50 cursor-pointer relative group text-center aspect-square
+                ${isLocked ? 'border-l-2 border-purple-800' : 'border-b border-r border-gray-100'}
+                w-full h-5 flex flex-col justify-center text-[7px]'
               `}
               style={inlineStyle}
               title={currentUser ? `Monitored by: ${currentUser}` : 'No monitoring this hour'}
             >
               <div className="text-center">
-                <h4 className="font-semibold text-sm mb-2 truncate" title={portfolio.name}>
-                  {portfolio.name}
-                </h4>
-                <div className="text-2xl font-bold mb-1">
-                  {beingLogged ? '🔄' : (updated ? '0h' : (hoursSince === Infinity ? '4h+' : `${hoursSince}h`))}
+                <div className="font-medium leading-none" title={portfolio.name}>
+                  {portfolio.name[0]}{portfolio.name.split(' ').length > 1 ? portfolio.name.split(' ')[1][0] : portfolio.name[1]}
                 </div>
-                <div className="text-xs opacity-75">
-                  {statusText}
+                <div className="text-[8px] font-bold leading-none">
+                  {beingLogged ? '🔄' : (updated ? '0' : (hoursSince === Infinity ? '4' : `${hoursSince}`))}
                 </div>
                 {/* Show locked indicator if portfolio is locked */}
                 {isLocked && (
-                  <div className="mt-2 flex items-center justify-center gap-1 text-xs font-medium text-purple-700">
-                    🔒 <span>Locked by {portfolio.locked_by || 'Admin'}</span>
+                  <div className="absolute -top-1 -right-1 text-[6px] text-white font-bold">
+                    🔒
                   </div>
                 )}
                 {/* Show user name if someone monitored this hour */}
                 {currentUser && !isLocked && !beingLogged && (
-                  <div className="mt-2 text-xs font-medium opacity-90">
-                    👤 {currentUser}
+                  <div className="absolute bottom-0 right-0 text-[5px] text-gray-500">
+                    {currentUser[0]}
                   </div>
                 )}
               </div>
@@ -370,11 +378,12 @@ const PortfolioStatusHeatMap = () => {
       </div>
 
       {/* Action Modal for Portfolio Actions */}
-      <ActionModal 
-        isOpen={showActionModal} 
+      <ActionModal
+        isOpen={showActionModal}
         onClose={() => setShowActionModal(false)}
         title={modalTitle}
         portfolioId={selectedPortfolio}
+        portfolioData={portfolios.find(p => (p.portfolio_id || p.id) === selectedPortfolio)}
       />
     </div>
   );

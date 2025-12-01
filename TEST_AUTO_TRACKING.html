@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auto-Tracking Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Auto-Tracking Diagnostic Tool</h1>
+    
+    <div class="test-box">
+        <h2>Step 1: Check Session Storage</h2>
+        <button onclick="checkSession()">Check My Login Info</button>
+        <div id="sessionResult"></div>
+    </div>
+    
+    <div class="test-box">
+        <h2>Step 2: Simulate Auto-Tracking</h2>
+        <button onclick="simulateAutoTracking()">Test Auto-Fill Logic</button>
+        <div id="autoTrackResult"></div>
+    </div>
+    
+    <div class="test-box">
+        <h2>Step 3: Set Test Login</h2>
+        <p>If you're not logged in, click here to set a test username:</p>
+        <button onclick="setTestLogin()">Set Test Login (LibsysAdmin)</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <script>
+        function checkSession() {
+            const username = sessionStorage.getItem('username');
+            const fullName = sessionStorage.getItem('fullName');
+            const userRole = sessionStorage.getItem('userRole');
+            
+            let html = '<div class="result">';
+            html += '<h3>Session Storage Contents:</h3>';
+            html += '<p><strong>username:</strong> ' + (username || '<span class="error">NOT SET</span>') + '</p>';
+            html += '<p><strong>fullName:</strong> ' + (fullName || '<span class="error">NOT SET</span>') + '</p>';
+            html += '<p><strong>userRole:</strong> ' + (userRole || '<span class="error">NOT SET</span>') + '</p>';
+            
+            if (!username && !fullName) {
+                html += '<p class="error">⚠️ NO USERNAME FOUND! You may not be logged in properly.</p>';
+            } else {
+                html += '<p class="success">✅ Username is set correctly!</p>';
+            }
+            html += '</div>';
+            
+            document.getElementById('sessionResult').innerHTML = html;
+        }
+        
+        function simulateAutoTracking() {
+            // This is the EXACT logic from IssueForm.js
+            const loggedInUser = sessionStorage.getItem('username') || 
+                                sessionStorage.getItem('fullName') || 
+                                'LibsysAdmin';
+            
+            let html = '<div class="result">';
+            html += '<h3>Auto-Tracking Result:</h3>';
+            html += '<p><strong>Monitored By would be set to:</strong></p>';
+            html += '<p class="success" style="font-size: 24px; padding: 10px; background: #e8f5e9; border-radius: 4px;">' + loggedInUser + '</p>';
+            
+            if (loggedInUser === 'LibsysAdmin') {
+                html += '<p class="error">⚠️ Using fallback default! No username found in session.</p>';
+            } else {
+                html += '<p class="success">✅ Using your logged-in username!</p>';
+            }
+            html += '</div>';
+            
+            document.getElementById('autoTrackResult').innerHTML = html;
+        }
+        
+        function setTestLogin() {
+            sessionStorage.setItem('username', 'LibsysAdmin');
+            sessionStorage.setItem('fullName', 'Libsys Administrator');
+            sessionStorage.setItem('userRole', 'admin');
+            
+            let html = '<div class="result">';
+            html += '<p class="success">✅ Test login set!</p>';
+            html += '<p>Username: LibsysAdmin</p>';
+            html += '<p>Full Name: Libsys Administrator</p>';
+            html += '<p>Role: admin</p>';
+            html += '<p><strong>Now try Steps 1 and 2 again!</strong></p>';
+            html += '</div>';
+            
+            document.getElementById('loginResult').innerHTML = html;
+        }
+    </script>
+</body>
+</html>

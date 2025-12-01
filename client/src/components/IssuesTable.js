@@ -11,7 +11,8 @@ const IssuesTable = () => {
     hour: '',
     issuePresent: '',
     dateFrom: '',
-    dateTo: ''
+    dateTo: '',
+    searchText: ''
   });
   const [editingIssue, setEditingIssue] = useState(null);
   const [portfolios, setPortfolios] = useState([]);
@@ -60,25 +61,15 @@ const IssuesTable = () => {
 
   const handleSaveIssue = async (updatedIssue) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/issues/${updatedIssue.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          portfolio_id: updatedIssue.portfolio_id,
-          issue_hour: updatedIssue.issue_hour,
-          issue_present: updatedIssue.issue_present,
-          issue_details: updatedIssue.issue_details,
-          case_number: updatedIssue.case_number,
-          monitored_by: updatedIssue.monitored_by,
-          issues_missed_by: updatedIssue.issues_missed_by
-        })
+      await issuesAPI.update(updatedIssue.id, {
+        portfolio_id: updatedIssue.portfolio_id,
+        issue_hour: updatedIssue.issue_hour,
+        issue_present: updatedIssue.issue_present,
+        issue_details: updatedIssue.issue_details,
+        case_number: updatedIssue.case_number,
+        monitored_by: updatedIssue.monitored_by,
+        issues_missed_by: updatedIssue.issues_missed_by
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to update issue');
-      }
 
       // Refresh the issues list
       await fetchIssues();
@@ -86,7 +77,7 @@ const IssuesTable = () => {
       setEditingIssue(null);
     } catch (err) {
       console.error('Error updating issue:', err);
-      alert('Failed to update issue: ' + err.message);
+      alert('Failed to update issue: ' + (err.message || 'Unknown error'));
     }
   };
 
@@ -96,9 +87,31 @@ const IssuesTable = () => {
   };
 
   const filteredIssues = issues.filter(issue => {
+    // Apply filters
     if (filter.portfolio && issue.portfolio_name !== filter.portfolio) return false;
     if (filter.hour && issue.issue_hour.toString() !== filter.hour) return false;
     if (filter.issuePresent && issue.issue_present !== filter.issuePresent) return false;
+    
+    // Apply search text filter if any
+    if (filter.searchText) {
+      const searchLower = filter.searchText.toLowerCase();
+      const searchableFields = [
+        issue.portfolio_name || '',
+        issue.issue_details || '',
+        issue.case_number || '',
+        issue.monitored_by || '',
+        issue.issues_missed_by || '',
+        issue.issue_hour?.toString() || ''
+      ];
+      
+      // Check if any field contains the search text
+      if (!searchableFields.some(field => 
+        field.toLowerCase().includes(searchLower)
+      )) {
+        return false;
+      }
+    }
+    
     return true;
   });
 
@@ -108,7 +121,8 @@ const IssuesTable = () => {
       hour: '',
       issuePresent: '',
       dateFrom: '',
-      dateTo: ''
+      dateTo: '',
+      searchText: ''
     });
   };
 
@@ -147,6 +161,34 @@ const IssuesTable = () => {
     <div className="space-y-6 p-6">
       {/* Filters Section */}
       <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        {/* Search Bar */}
+        <div className="mb-4">
+          <div className="relative rounded-md shadow-sm">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 rounded-md py-2"
+              placeholder="Search issues..."
+              value={filter.searchText}
+              onChange={(e) => setFilter({...filter, searchText: e.target.value})}
+            />
+            {filter.searchText && (
+              <button
+                onClick={() => setFilter({...filter, searchText: ''})}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

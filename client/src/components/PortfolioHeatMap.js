@@ -31,40 +31,38 @@ const PortfolioHeatMap = ({ coverageData, totalPortfolios }) => {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">
-        Portfolio Coverage Heat Map
-      </h3>
-      <p className="text-sm text-gray-600 mb-6">
-        Coverage percentage by hour - Red indicates high issue activity (75%+ portfolios with issues)
-      </p>
+    <div className="bg-white shadow rounded-lg p-2 w-max max-w-full overflow-hidden">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-sm font-medium text-gray-900">Portfolio Coverage</h3>
+        <span className="text-xs text-gray-500">Red = 75%+</span>
+      </div>
       
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 mb-6">
+      <div className="flex flex-wrap gap-1 mb-3 text-[10px]">
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-gray-100 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">No issues (0%)</span>
+          <div className="w-2.5 h-2.5 bg-gray-100 rounded-sm mr-0.5"></div>
+          <span className="text-gray-600">0%</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-green-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">Low (1-24%)</span>
+          <div className="w-3 h-3 bg-green-200 rounded mr-1"></div>
+          <span className="text-gray-600">1-24%</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-yellow-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">Medium (25-49%)</span>
+          <div className="w-3 h-3 bg-yellow-200 rounded mr-1"></div>
+          <span className="text-gray-600">25-49%</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-orange-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">High (50-74%)</span>
+          <div className="w-3 h-3 bg-orange-200 rounded mr-1"></div>
+          <span className="text-gray-600">50-74%</span>
         </div>
         <div className="flex items-center">
-          <div className="w-4 h-4 bg-red-200 rounded mr-2"></div>
-          <span className="text-sm text-gray-600">Critical (75%+)</span>
+          <div className="w-3 h-3 bg-red-200 rounded mr-1"></div>
+          <span className="text-gray-600">75%+</span>
         </div>
       </div>
 
       {/* Heat Map Grid */}
-      <div className="grid grid-cols-12 gap-1">
+      <div className="grid grid-cols-12 gap-0.5">
         {hours.map(hour => {
           const hourData = coverageMap[hour] || { coverage_percentage: 0, portfolios_with_issues: 0 };
           const coveragePercentage = hourData.coverage_percentage || 0;
@@ -76,38 +74,38 @@ const PortfolioHeatMap = ({ coverageData, totalPortfolios }) => {
               className={`
                 ${getColorClass(coveragePercentage)}
                 ${getTextColor(coveragePercentage)}
-                p-2 rounded text-center text-xs font-medium
-                hover:shadow-md transition-shadow cursor-pointer
-                border border-gray-200
+                p-0.5 rounded-sm text-center text-[8px] font-medium
+                hover:shadow-sm cursor-pointer
+                border border-gray-100 min-w-[20px] h-8 flex flex-col justify-center
               `}
               title={`Hour ${hour}: ${portfoliosWithIssues}/${totalPortfolios} portfolios (${coveragePercentage}%)`}
             >
-              <div className="font-bold">{hour}</div>
-              <div className="text-xs opacity-75">{coveragePercentage}%</div>
+              <div className="font-semibold leading-none">{hour}</div>
+              <div className="text-[7px] opacity-75 leading-none">{coveragePercentage}%</div>
             </div>
           );
         })}
       </div>
 
       {/* Summary Stats */}
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mt-2 grid grid-cols-3 gap-1 text-[9px]">
         <div className="text-center">
-          <div className="text-2xl font-bold text-gray-900">
+          <div className="text-sm font-bold text-gray-900">
             {coverageData ? Math.max(...coverageData.map(h => h.coverage_percentage)) : 0}%
           </div>
-          <div className="text-sm text-gray-600">Peak Coverage</div>
+          <div className="text-[10px] text-gray-600">Peak Coverage</div>
         </div>
         <div className="text-center">
-          <div className="text-2xl font-bold text-gray-900">
+          <div className="text-sm font-bold text-gray-900">
             {coverageData ? coverageData.filter(h => h.coverage_percentage > 0).length : 0}
           </div>
-          <div className="text-sm text-gray-600">Active Hours</div>
+          <div className="text-[10px] text-gray-600">Active Hours</div>
         </div>
         <div className="text-center">
-          <div className="text-2xl font-bold text-gray-900">
+          <div className="text-sm font-bold text-gray-900">
             {coverageData ? Math.round(coverageData.reduce((sum, h) => sum + h.coverage_percentage, 0) / coverageData.length) : 0}%
           </div>
-          <div className="text-sm text-gray-600">Avg Coverage</div>
+          <div className="text-[10px] text-gray-600">Avg Coverage</div>
         </div>
       </div>
     </div>

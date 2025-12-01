@@ -2,7 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
-const db = require('./database');
+// Use production database if USE_SUPABASE is true or NODE_ENV is production
+const db = (process.env.USE_SUPABASE === 'true' || process.env.NODE_ENV === 'production') 
+  ? require('./database-production') 
+  : require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -626,7 +629,13 @@ app.delete('/api/reservations/:id', (req, res) => {
   );
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`📡 API available at http://localhost:${PORT}/api`);
-});
+// Export app for serverless deployment (Vercel)
+module.exports = app;
+
+// Only start server if not in serverless environment
+if (process.env.VERCEL !== '1' && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  app.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`📡 API available at http://localhost:${PORT}/api`);
+  });
+}
