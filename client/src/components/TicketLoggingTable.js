@@ -11,6 +11,12 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     showAllIssues: true
   });
 
+  // Separate export date range filters for CSV downloads
+  const [exportFilters, setExportFilters] = useState({
+    fromDate: getTodayString(),
+    toDate: getTodayString()
+  });
+
   const [formData, setFormData] = useState({
     portfolio_id: '',
     site_id: '',
@@ -554,6 +560,51 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleExportFilterChange = (key, value) => {
+    setExportFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const setQuickExportRange = (range) => {
+    const today = new Date();
+    const todayStr = getTodayString();
+
+    if (range === 'today') {
+      setExportFilters({
+        fromDate: todayStr,
+        toDate: todayStr
+      });
+      return;
+    }
+
+    if (range === 'week') {
+      // Week starting Monday
+      const day = today.getDay(); // 0 (Sun) - 6 (Sat)
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + diffToMonday);
+
+      const fromDate = monday.toISOString().split('T')[0];
+      const toDate = todayStr;
+
+      setExportFilters({
+        fromDate,
+        toDate
+      });
+      return;
+    }
+
+    if (range === 'month') {
+      const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const fromDate = firstOfMonth.toISOString().split('T')[0];
+      const toDate = todayStr;
+
+      setExportFilters({
+        fromDate,
+        toDate
+      });
+    }
+  };
+
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     // CRITICAL FIX: Prevent hour change if portfolio is locked
@@ -641,14 +692,37 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
   };
 
   const handleExportAllIssues = () => {
-    exportToCSV(issues, `all_issues_${new Date().toISOString().split('T')[0]}.csv`);
+    const filteredByRange = issues.filter(issue => {
+      const issueDate = new Date(issue.created_at).toISOString().split('T')[0];
+      if (exportFilters.fromDate && issueDate < exportFilters.fromDate) return false;
+      if (exportFilters.toDate && issueDate > exportFilters.toDate) return false;
+      return true;
+    });
+
+    const suffix =
+      exportFilters.fromDate && exportFilters.toDate
+        ? `${exportFilters.fromDate}_to_${exportFilters.toDate}`
+        : new Date().toISOString().split('T')[0];
+
+    exportToCSV(filteredByRange, `all_issues_${suffix}.csv`);
   };
 
   const handleExportIssuesWithYes = () => {
     const issuesWithYes = issues.filter(issue => 
       (issue.issue_present || '').toString().toLowerCase() === 'yes'
-    );
-    exportToCSV(issuesWithYes, `issues_with_yes_${new Date().toISOString().split('T')[0]}.csv`);
+    ).filter(issue => {
+      const issueDate = new Date(issue.created_at).toISOString().split('T')[0];
+      if (exportFilters.fromDate && issueDate < exportFilters.fromDate) return false;
+      if (exportFilters.toDate && issueDate > exportFilters.toDate) return false;
+      return true;
+    });
+
+    const suffix =
+      exportFilters.fromDate && exportFilters.toDate
+        ? `${exportFilters.fromDate}_to_${exportFilters.toDate}`
+        : new Date().toISOString().split('T')[0];
+
+    exportToCSV(issuesWithYes, `issues_with_yes_${suffix}.csv`);
   };
 
   const handleSubmit = async () => {
@@ -997,33 +1071,82 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
 
       {/* Export Buttons Section */}
       <div className="p-4 border-b bg-blue-50">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-3">
           <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <h3 className="text-sm font-semibold text-gray-700">Export Issues</h3>
-          <div className="flex gap-2 ml-auto">
-            <button
-              onClick={handleExportAllIssues}
-              className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-              title="Export all issues to CSV"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Export All Issues
-            </button>
-            <button
-              onClick={handleExportIssuesWithYes}
-              className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
-              title="Export only issues where Issue Present = Yes"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Export Issues (Yes Only)
-            </button>
+        </div>
+
+        {/* Export Date Range & Quick Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+            <input
+              type="date"
+              value={exportFilters.fromDate}
+              onChange={(e) => handleExportFilterChange('fromDate', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+            <input
+              type="date"
+              value={exportFilters.toDate}
+              onChange={(e) => handleExportFilterChange('toDate', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div className="flex flex-col justify-between">
+            <span className="block text-xs font-medium text-gray-700 mb-1">Quick Range</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setQuickExportRange('today')}
+                className="px-3 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickExportRange('week')}
+                className="px-3 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+              >
+                This Week
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickExportRange('month')}
+                className="px-3 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+              >
+                This Month
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportAllIssues}
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+            title="Export all issues in the selected date range to CSV"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export All Issues
+          </button>
+          <button
+            onClick={handleExportIssuesWithYes}
+            className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+            title="Export only issues with Issue Present = Yes in the selected date range"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export Issues (Yes Only)
+          </button>
         </div>
       </div>
 
