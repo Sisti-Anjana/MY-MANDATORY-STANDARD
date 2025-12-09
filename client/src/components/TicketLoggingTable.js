@@ -8,7 +8,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     searchText: '',
     dateFilter: getTodayString(),
     hourFilter: '',
-    showAllIssues: true
+    issueFilter: 'yes' // 'yes' = Issues Yes (default), 'all' = All Issues
   });
 
   // Separate export date range filters for CSV downloads
@@ -629,7 +629,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       searchText: '',
       dateFilter: getTodayString(),
       hourFilter: '',
-      showAllIssues: true
+      issueFilter: 'yes' // Reset to default: Issues Yes
     });
   };
 
@@ -946,6 +946,12 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
   const filteredIssues = issues.filter(issue => {
     let match = true;
 
+    // Issue Present filter - default to "Issues Yes" only
+    if (filters.issueFilter === 'yes') {
+      match = match && (issue.issue_present || '').toString().toLowerCase() === 'yes';
+    }
+    // If 'all', show all issues (no filter applied)
+
     // Search filter - searches in portfolio name, issue details, and case number
     if (filters.searchText && filters.searchText.trim() !== '') {
       const searchLower = filters.searchText.toLowerCase();
@@ -968,7 +974,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     return match;
   });
 
-  const displayIssues = filters.showAllIssues ? filteredIssues : [];
+  const displayIssues = filteredIssues;
 
   return (
     <div className="bg-white rounded-lg shadow">
@@ -997,45 +1003,47 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       )}
       {/* SEARCH BAR - NEW FEATURE */}
       <div className="p-4 bg-gradient-to-r from-green-50 to-lime-50 border-b">
-        <div className="flex items-center gap-2 mb-2">
-          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 mb-3">
+          <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <h3 className="text-sm font-semibold text-gray-700">Search Issues</h3>
         </div>
-        <input
-          type="text"
-          value={filters.searchText}
-          onChange={(e) => handleFilterChange('searchText', e.target.value)}
-          placeholder="Search by portfolio, issue details, case number, or monitored by..."
-          className="w-full px-4 py-2 border-2 border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
-        />
-        {filters.searchText && (
-          <div className="mt-2 text-xs text-gray-600">
-            Found {filteredIssues.length} matching issue(s)
-          </div>
-        )}
+        <div className="max-w-[500px]">
+          <input
+            type="text"
+            value={filters.searchText}
+            onChange={(e) => handleFilterChange('searchText', e.target.value)}
+            placeholder="Search by portfolio, issue details, case number, or monitored by..."
+            className="w-full px-3 py-2 border-2 border-green-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+          />
+          {filters.searchText && (
+            <div className="mt-2 text-xs text-gray-600">
+              Found {filteredIssues.length} matching issue(s)
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Filters Section */}
       <div className="p-4 border-b bg-gray-50">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+        <div className="grid grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date Filter</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Date Filter</label>
             <input
               type="date"
               value={filters.dateFilter}
               onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Hour Filter</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Hour Filter</label>
             <select
               value={filters.hourFilter}
               onChange={(e) => handleFilterChange('hourFilter', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="">All Hours</option>
               {hours.map(h => (
@@ -1044,24 +1052,23 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             </select>
           </div>
 
-          <div className="flex items-center pt-6">
-            <input
-              type="checkbox"
-              id="showAllIssues"
-              checked={filters.showAllIssues}
-              onChange={(e) => handleFilterChange('showAllIssues', e.target.checked)}
-              className="w-4 h-4 border-gray-300 rounded focus:ring-green-500"
-              style={{ accentColor: '#76AB3F' }}
-            />
-            <label htmlFor="showAllIssues" className="ml-2 text-sm font-medium text-gray-700">
-              Show All Issues
-            </label>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Issue Filter</label>
+            <select
+              value={filters.issueFilter}
+              onChange={(e) => handleFilterChange('issueFilter', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            >
+              <option value="yes">Issues Yes (Default)</option>
+              <option value="all">All Issues</option>
+            </select>
           </div>
 
-          <div className="pt-6">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide opacity-0">Action</label>
             <button
               onClick={handleClearFilters}
-              className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300 font-medium"
+              className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 font-medium transition-colors"
             >
               Clear Filters
             </button>
@@ -1071,54 +1078,54 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
 
       {/* Export Buttons Section */}
       <div className="p-4 border-b bg-blue-50">
-        <div className="flex items-center gap-3 mb-3">
-          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 mb-4">
+          <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <h3 className="text-sm font-semibold text-gray-700">Export Issues</h3>
         </div>
 
         {/* Export Date Range & Quick Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-4 gap-4 items-end mb-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">From Date</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">From Date</label>
             <input
               type="date"
               value={exportFilters.fromDate}
               onChange={(e) => handleExportFilterChange('fromDate', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">To Date</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">To Date</label>
             <input
               type="date"
               value={exportFilters.toDate}
               onChange={(e) => handleExportFilterChange('toDate', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          <div className="flex flex-col justify-between">
-            <span className="block text-xs font-medium text-gray-700 mb-1">Quick Range</span>
-            <div className="flex flex-wrap gap-2">
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Quick Range</label>
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setQuickExportRange('today')}
-                className="px-3 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+                className="px-3 py-1.5 text-xs bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors font-medium"
               >
                 Today
               </button>
               <button
                 type="button"
                 onClick={() => setQuickExportRange('week')}
-                className="px-3 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+                className="px-3 py-1.5 text-xs bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors font-medium"
               >
                 This Week
               </button>
               <button
                 type="button"
                 onClick={() => setQuickExportRange('month')}
-                className="px-3 py-1 text-xs bg-white border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+                className="px-3 py-1.5 text-xs bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors font-medium"
               >
                 This Month
               </button>
@@ -1126,10 +1133,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleExportAllIssues}
-            className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
             title="Export all issues in the selected date range to CSV"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1139,7 +1146,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           </button>
           <button
             onClick={handleExportIssuesWithYes}
-            className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+            className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2 shadow-sm"
             title="Export only issues with Issue Present = Yes in the selected date range"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1301,7 +1308,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             {displayIssues.length === 0 ? (
               <tr>
                 <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
-                  {filters.showAllIssues ? 'No issues found' : 'Check "Show All Issues" to view issues'}
+                  {filters.issueFilter === 'yes' 
+                    ? 'No issues with "Issue Present = Yes" found. Select "All Issues" to see all issues.' 
+                    : 'No issues found matching the filters'}
                 </td>
               </tr>
             ) : (

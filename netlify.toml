@@ -15,7 +15,7 @@
 # All /api/* requests are proxied to Render backend
 [[redirects]]
   from = "/api/*"
-  to = "https://hlsc-2uao.onrender.com/api/:splat"
+  to = "https://my-mandatory-standard.onrender.com/api/:splat"
   status = 200
   force = true
 

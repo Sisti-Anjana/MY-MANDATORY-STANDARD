@@ -6,7 +6,8 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
     missedBy: '',
     monitoredBy: '',
     startDate: '',
-    endDate: ''
+    endDate: '',
+    issueFilter: 'yes' // 'yes' = Issues Yes (default), 'all' = All Issues
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -22,6 +23,14 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
   const filteredIssues = useMemo(() => {
     let filtered = [...issues];
+
+    // Issue Present filter - default to "Issues Yes" only
+    if (filters.issueFilter === 'yes') {
+      filtered = filtered.filter(issue => 
+        (issue.issue_present || '').toString().toLowerCase() === 'yes'
+      );
+    }
+    // If 'all', show all issues (no filter applied)
 
     if (filters.showMissedOnly) {
       filtered = filtered.filter(issue => issue.issues_missed_by);
@@ -194,7 +203,8 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
       missedBy: '',
       monitoredBy: '',
       startDate: '',
-      endDate: ''
+      endDate: '',
+      issueFilter: 'yes' // Reset to default: Issues Yes
     });
     setSearchQuery('');
   };
@@ -606,15 +616,49 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             <span className="text-xs text-gray-600">
               Showing <span className="font-bold text-purple-600">{filteredUsers.length}</span> user(s) matching "{userSearchQuery}"
             </span>
-            <button
-              onClick={() => setUserSearchQuery('')}
-              className="text-xs text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Clear Search
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const header = ['User', 'Total Monitored', 'Issues Found', 'Issues Missed', 'Active Hours', 'Performance Score', 'Portfolios Covered'];
+                  const rows = filteredUsers.map(user => [
+                    user.userName,
+                    user.totalMonitored,
+                    user.issuesFound,
+                    user.issuesMissed,
+                    user.activeHours,
+                    user.performanceScore,
+                    user.portfoliosCovered || 0
+                  ]);
+                  const csvContent = [header, ...rows]
+                    .map(row => row.map(cell => `"${String(cell)}"`).join(','))
+                    .join('\n');
+                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement('a');
+                  const url = URL.createObjectURL(blob);
+                  link.setAttribute('href', url);
+                  link.setAttribute('download', `user-analytics-${userSearchQuery}-${new Date().toISOString().split('T')[0]}.csv`);
+                  link.style.visibility = 'hidden';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg shadow transition-colors"
+                style={{ backgroundColor: '#76AB3F' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
+              >
+                Export Data
+              </button>
+              <button
+                onClick={() => setUserSearchQuery('')}
+                className="text-xs text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear Search
+              </button>
+            </div>
           </div>
         )}
 
@@ -632,7 +676,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             </svg>
             Filter & Search Issues
           </h3>
-          {(filters.showMissedOnly || filters.missedBy || filters.monitoredBy || filters.startDate || filters.endDate || searchQuery) && (
+          {(filters.showMissedOnly || filters.missedBy || filters.monitoredBy || filters.startDate || filters.endDate || filters.issueFilter === 'all' || searchQuery) && (
             <span className="text-sm text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full">
               {filteredIssues.length} results found
             </span>
@@ -673,6 +717,24 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Issue Filter - Default to "Issues Yes" */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Issue Filter
+            </label>
+            <select
+              value={filters.issueFilter}
+              onChange={(e) => handleFilterChange('issueFilter', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            >
+              <option value="yes">Issues Yes (Default)</option>
+              <option value="all">All Issues</option>
+            </select>
           </div>
 
           {/* Checkbox Filter */}

@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Issue Tracker - Complete Documentation</title>
+    <style>
+        body {
+            font-family: 'Calibri', 'Arial', sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 4px solid #3498db;
+            padding-bottom: 10px;
+            font-size: 32px;
+        }
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            margin-top: 30px;
+            font-size: 24px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 20px;
+            font-size: 20px;
+        }
+        .header-info {
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 30px;
+        }
+        .url-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+        .credentials-box {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .credentials-box h4 {
+            margin-top: 0;
+            color: #856404;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .status-active {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-pending {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .info-box {
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .toc {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin: 8px 0;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #3498db;
+        }
+        .toc a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<h1>PORTFOLIO ISSUE TRACKER - COMPLETE APPLICATION DOCUMENTATION</h1>
+
+<div class="header-info">
+    <strong>Document Version:</strong> 1.0<br>
+    <strong>Date:</strong> January 2025<br>
+    <strong>Application Name:</strong> Portfolio Issue Tracker<br>
+    <strong>Purpose:</strong> Complete technical documentation for presentation and reference
+</div>
+
+<div class="toc">
+    <h2>TABLE OF CONTENTS</h2>
+    <ul>
+        <li><a href="#overview">1. Application Overview</a></li>
+        <li><a href="#frontend">2. Frontend Details</a></li>
+        <li><a href="#backend">3. Backend Details</a></li>
+        <li><a href="#database">4. Database (Supabase) Details</a></li>
+        <li><a href="#api">5. API Endpoints</a></li>
+        <li><a href="#auth">6. Authentication & Credentials</a></li>
+        <li><a href="#env">7. Environment Variables</a></li>
+        <li><a href="#deployment">8. Deployment Information</a></li>
+        <li><a href="#tech">9. Technical Stack</a></li>
+        <li><a href="#features">10. Key Features</a></li>
+    </ul>
+</div>
+
+<h2 id="overview">1. APPLICATION OVERVIEW</h2>
+
+<h3>Application Name</h3>
+<p><strong>Portfolio Issue Tracker</strong></p>
+
+<h3>Description</h3>
+<p>A web-based application for tracking and managing portfolio issues with real-time monitoring, hour-based locking system, and comprehensive analytics. The application allows users to log issues for different portfolios, track coverage, and manage portfolios efficiently.</p>
+
+<h3>Main Purpose</h3>
+<ul>
+    <li>Track issues across multiple portfolios</li>
+    <li>Monitor portfolio coverage by hour</li>
+    <li>Manage user access and permissions</li>
+    <li>Generate reports and analytics</li>
+    <li>Admin panel for user and portfolio management</li>
+</ul>
+
+<h2 id="frontend">2. FRONTEND DETAILS</h2>
+
+<h3>Platform</h3>
+<p><strong>Netlify</strong></p>
+
+<h3>Frontend URL</h3>
+<div class="url-box">
+    https://standardsolarhlsc.netlify.app
+</div>
+
+<h3>Status</h3>
+<p class="status-active">✅ LIVE AND ACTIVE</p>
+
+<h3>Technology Stack</h3>
+<ul>
+    <li><strong>Framework:</strong> React 18.2.0</li>
+    <li><strong>Routing:</strong> React Router DOM 6.8.1</li>
+    <li><strong>Charts:</strong> Recharts 2.8.0</li>
+    <li><strong>HTTP Client:</strong> Axios 1.6.0</li>
+    <li><strong>Database Client:</strong> @supabase/supabase-js 2.38.0</li>
+    <li><strong>Styling:</strong> Tailwind CSS 3.3.0</li>
+</ul>
+
+<h3>Build Configuration</h3>
+<ul>
+    <li><strong>Build Command:</strong> <code>npm install && npm run build</code></li>
+    <li><strong>Publish Directory:</strong> <code>build</code></li>
+    <li><strong>Base Directory:</strong> <code>client</code></li>
+    <li><strong>Node Version:</strong> 18</li>
+</ul>
+
+<h2 id="backend">3. BACKEND DETAILS</h2>
+
+<h3>Platform</h3>
+<p><strong>Render</strong></p>
+
+<h3>Backend URL</h3>
+<div class="url-box">
+    https://my-mandatory-standard.onrender.com
+</div>
+
+<h3>API Base URL</h3>
+<div class="url-box">
+    https://my-mandatory-standard.onrender.com/api
+</div>
+
+<h3>Status</h3>
+<p class="status-active">✅ DEPLOYED AND ACTIVE</p>
+
+<h3>Technology Stack</h3>
+<ul>
+    <li><strong>Runtime:</strong> Node.js 18+</li>
+    <li><strong>Framework:</strong> Express.js 4.18.2</li>
+    <li><strong>Database:</strong> Supabase (PostgreSQL)</li>
+    <li><strong>Session Management:</strong> UUID-based sessions</li>
+    <li><strong>CORS:</strong> Enabled for cross-origin requests</li>
+</ul>
+
+<h3>Backend Configuration</h3>
+<ul>
+    <li><strong>Root Directory:</strong> <code>server</code></li>
+    <li><strong>Build Command:</strong> <code>npm install</code></li>
+    <li><strong>Start Command:</strong> <code>npm start</code></li>
+    <li><strong>Port:</strong> 10000 (Render default)</li>
+</ul>
+
+<h2 id="database">4. DATABASE (SUPABASE) DETAILS</h2>
+
+<h3>Platform</h3>
+<p><strong>Supabase (PostgreSQL)</strong></p>
+
+<h3>Supabase Project URL</h3>
+<div class="url-box">
+    https://wkkclsbaavdlplcqrsyr.supabase.co
+</div>
+
+<h3>Status</h3>
+<p class="status-active">✅ ACTIVE</p>
+
+<h3>Database Type</h3>
+<p>PostgreSQL (managed by Supabase)</p>
+
+<h3>Supabase Anon Key (Public - Frontend)</h3>
+<div class="url-box" style="font-size: 12px;">
+    eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indra2Nsc2JhYXZkbHBsY3Fyc3lyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2NTY2MzksImV4cCI6MjA3NzIzMjYzOX0.cz3vhJ-U9riaUjb7JBcf_didvZWRVZryjOgTIxmVmQ8
+</div>
+
+<h3>Supabase Service Key (Private - Backend Only)</h3>
+<div class="url-box" style="font-size: 12px;">
+    eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indra2Nsc2JhYXZkbHBsY3Fyc3lyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMDY0MzcyMywiZXhwIjoyMDQ2MjE5NzIzfQ.tL6KYs3_-_zxJ3-RJ0DQm8fEQz3vWmBGhKXCl9_Dw6g
+</div>
+
+<h3>Database Tables</h3>
+<ol>
+    <li><strong>portfolios</strong> - Portfolio information</li>
+    <li><strong>sites</strong> - Site details linked to portfolios</li>
+    <li><strong>issues</strong> - Issue tracking records</li>
+    <li><strong>users</strong> - User accounts and authentication</li>
+    <li><strong>hour_reservations</strong> - Portfolio locking system</li>
+</ol>
+
+<h2 id="api">5. API ENDPOINTS</h2>
+
+<h3>Base URL</h3>
+<div class="url-box">
+    https://my-mandatory-standard.onrender.com/api
+</div>
+
+<h3>Portfolio Endpoints</h3>
+<table>
+    <tr>
+        <th>Method</th>
+        <th>Endpoint</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/portfolios</code></td>
+        <td>Get all portfolios</td>
+    </tr>
+    <tr>
+        <td>POST</td>
+        <td><code>/api/portfolios</code></td>
+        <td>Create new portfolio (Admin)</td>
+    </tr>
+    <tr>
+        <td>DELETE</td>
+        <td><code>/api/portfolios/:id</code></td>
+        <td>Delete portfolio</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/portfolios/:id/status</code></td>
+        <td>Get portfolio status</td>
+    </tr>
+    <tr>
+        <td>PUT</td>
+        <td><code>/api/portfolios/:id/status</code></td>
+        <td>Update portfolio status</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/portfolios/:portfolioId/sites</code></td>
+        <td>Get sites by portfolio</td>
+    </tr>
+</table>
+
+<h3>Issue Endpoints</h3>
+<table>
+    <tr>
+        <th>Method</th>
+        <th>Endpoint</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/issues</code></td>
+        <td>Get all issues (with optional search and portfolio_id filters)</td>
+    </tr>
+    <tr>
+        <td>POST</td>
+        <td><code>/api/issues</code></td>
+        <td>Create new issue</td>
+    </tr>
+    <tr>
+        <td>PUT</td>
+        <td><code>/api/issues/:id</code></td>
+        <td>Update issue</td>
+    </tr>
+    <tr>
+        <td>DELETE</td>
+        <td><code>/api/issues/:id</code></td>
+        <td>Delete issue</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/portfolios/:portfolioId/issues</code></td>
+        <td>Get issues by portfolio</td>
+    </tr>
+</table>
+
+<h3>Reservation (Locking) Endpoints</h3>
+<table>
+    <tr>
+        <th>Method</th>
+        <th>Endpoint</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>POST</td>
+        <td><code>/api/reservations</code></td>
+        <td>Create portfolio reservation/lock</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/reservations/check</code></td>
+        <td>Check reservation status</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/reservations</code></td>
+        <td>Get all active reservations (current session)</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/reservations/all</code></td>
+        <td>Get all active reservations (all users)</td>
+    </tr>
+    <tr>
+        <td>DELETE</td>
+        <td><code>/api/reservations/:id</code></td>
+        <td>Release reservation</td>
+    </tr>
+</table>
+
+<h3>Analytics Endpoints</h3>
+<table>
+    <tr>
+        <th>Method</th>
+        <th>Endpoint</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/coverage</code></td>
+        <td>Get coverage data by hour</td>
+    </tr>
+    <tr>
+        <td>GET</td>
+        <td><code>/api/stats</code></td>
+        <td>Get issue statistics</td>
+    </tr>
+</table>
+
+<h2 id="auth">6. AUTHENTICATION & CREDENTIALS</h2>
+
+<div class="credentials-box">
+    <h4>🔐 ADMIN CREDENTIALS</h4>
+    <p><strong>Username:</strong> <code>admin</code><br>
+    <strong>Password:</strong> <code>admin123</code><br>
+    <strong>Role:</strong> Administrator<br>
+    <strong>Access:</strong> Full admin panel access</p>
+</div>
+
+<div class="credentials-box">
+    <h4>👤 USER CREDENTIALS</h4>
+    <p><strong>Test User 1:</strong><br>
+    Username: <code>user1</code><br>
+    Password: <code>user123</code></p>
+    
+    <p><strong>Test User 2:</strong><br>
+    Username: <code>user2</code><br>
+    Password: <code>user123</code></p>
+</div>
+
+<h3>Authentication Method</h3>
+<ul>
+    <li><strong>Frontend:</strong> Session-based authentication using <code>sessionStorage</code></li>
+    <li><strong>Backend:</strong> Session ID passed via <code>x-session-id</code> header</li>
+    <li><strong>Admin Panel:</strong> Protected route requiring authentication</li>
+    <li><strong>Session Duration:</strong> 2 hours for admin, session-based for users</li>
+</ul>
+
+<h3>Login URLs</h3>
+<ul>
+    <li><strong>User Login:</strong> <code>https://standardsolarhlsc.netlify.app/</code> (default)</li>
+    <li><strong>Admin Login:</strong> Same URL, select "Admin Login" option</li>
+</ul>
+
+<h2 id="env">7. ENVIRONMENT VARIABLES</h2>
+
+<h3>Frontend Environment Variables (Netlify)</h3>
+<table>
+    <tr>
+        <th>Variable Name</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td><code>REACT_APP_SUPABASE_URL</code></td>
+        <td><code>https://wkkclsbaavdlplcqrsyr.supabase.co</code></td>
+    </tr>
+    <tr>
+        <td><code>REACT_APP_SUPABASE_ANON_KEY</code></td>
+        <td><code>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indra2Nsc2JhYXZkbHBsY3Fyc3lyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2NTY2MzksImV4cCI6MjA3NzIzMjYzOX0.cz3vhJ-U9riaUjb7JBcf_didvZWRVZryjOgTIxmVmQ8</code></td>
+    </tr>
+</table>
+
+<h3>Backend Environment Variables (Render)</h3>
+<table>
+    <tr>
+        <th>Variable Name</th>
+        <th>Value</th>
+    </tr>
+    <tr>
+        <td><code>PORT</code></td>
+        <td><code>10000</code></td>
+    </tr>
+    <tr>
+        <td><code>NODE_ENV</code></td>
+        <td><code>production</code></td>
+    </tr>
+    <tr>
+        <td><code>USE_SUPABASE</code></td>
+        <td><code>true</code></td>
+    </tr>
+    <tr>
+        <td><code>SUPABASE_URL</code></td>
+        <td><code>https://wkkclsbaavdlplcqrsyr.supabase.co</code></td>
+    </tr>
+    <tr>
+        <td><code>SUPABASE_SERVICE_KEY</code></td>
+        <td><code>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indra2Nsc2JhYXZkbHBsY3Fyc3lyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczMDY0MzcyMywiZXhwIjoyMDQ2MjE5NzIzfQ.tL6KYs3_-_zxJ3-RJ0DQm8fEQz3vWmBGhKXCl9_Dw6g</code></td>
+    </tr>
+</table>
+
+<h2 id="deployment">8. DEPLOYMENT INFORMATION</h2>
+
+<h3>Frontend Deployment (Netlify)</h3>
+<ul>
+    <li><strong>Platform:</strong> Netlify</li>
+    <li><strong>URL:</strong> https://standardsolarhlsc.netlify.app</li>
+    <li><strong>Build Settings:</strong>
+        <ul>
+            <li>Base Directory: <code>client</code></li>
+            <li>Build Command: <code>npm install && npm run build</code></li>
+            <li>Publish Directory: <code>build</code></li>
+            <li>Node Version: 18</li>
+        </ul>
+    </li>
+    <li><strong>Proxy Configuration:</strong> All <code>/api/*</code> requests are proxied to Render backend</li>
+</ul>
+
+<h3>Backend Deployment (Render)</h3>
+<ul>
+    <li><strong>Platform:</strong> Render</li>
+    <li><strong>URL:</strong> https://my-mandatory-standard.onrender.com</li>
+    <li><strong>Configuration:</strong>
+        <ul>
+            <li>Root Directory: <code>server</code></li>
+            <li>Build Command: <code>npm install</code></li>
+            <li>Start Command: <code>npm start</code></li>
+            <li>Environment: Node</li>
+            <li>Region: Oregon (or as configured)</li>
+        </ul>
+    </li>
+</ul>
+
+<h3>Single URL Setup</h3>
+<div class="info-box">
+    <p>The application uses Netlify's proxy feature to route API requests:</p>
+    <ul>
+        <li><strong>Frontend:</strong> <code>https://standardsolarhlsc.netlify.app</code></li>
+        <li><strong>API calls:</strong> <code>https://standardsolarhlsc.netlify.app/api/*</code> (proxied to Render)</li>
+    </ul>
+    <p>This provides a <strong>single URL</strong> for the entire application.</p>
+</div>
+
+<h2 id="tech">9. TECHNICAL STACK</h2>
+
+<h3>Frontend Technologies</h3>
+<ul>
+    <li><strong>React</strong> 18.2.0 - UI framework</li>
+    <li><strong>React Router DOM</strong> 6.8.1 - Client-side routing</li>
+    <li><strong>Recharts</strong> 2.8.0 - Data visualization</li>
+    <li><strong>Axios</strong> 1.6.0 - HTTP client</li>
+    <li><strong>Supabase JS</strong> 2.38.0 - Database client</li>
+    <li><strong>Tailwind CSS</strong> 3.3.0 - Styling framework</li>
+</ul>
+
+<h3>Backend Technologies</h3>
+<ul>
+    <li><strong>Node.js</strong> 18+ - Runtime environment</li>
+    <li><strong>Express.js</strong> 4.18.2 - Web framework</li>
+    <li><strong>CORS</strong> 2.8.5 - Cross-origin resource sharing</li>
+    <li><strong>Body Parser</strong> 1.20.2 - Request body parsing</li>
+    <li><strong>UUID</strong> 9.0.1 - Unique identifier generation</li>
+    <li><strong>Supabase JS</strong> 2.38.0 - Database client</li>
+</ul>
+
+<h3>Database</h3>
+<ul>
+    <li><strong>PostgreSQL</strong> (via Supabase)</li>
+    <li><strong>Supabase</strong> - Database hosting and management</li>
+</ul>
+
+<h3>Deployment Platforms</h3>
+<ul>
+    <li><strong>Netlify</strong> - Frontend hosting</li>
+    <li><strong>Render</strong> - Backend hosting</li>
+    <li><strong>Supabase</strong> - Database hosting</li>
+</ul>
+
+<h2 id="features">10. KEY FEATURES</h2>
+
+<h3>Portfolio Management</h3>
+<ul>
+    <li>View all portfolios in dashboard</li>
+    <li>Portfolio cards with status indicators</li>
+    <li>Green status for completed portfolios</li>
+    <li>Purple border for locked portfolios</li>
+    <li>"All Sites Checked" functionality</li>
+</ul>
+
+<h3>Issue Logging</h3>
+<ul>
+    <li>Log issues for specific portfolios</li>
+    <li>Hour-based issue tracking (1-24 hours)</li>
+    <li>Issue details and case number tracking</li>
+    <li>"Issue Present" (Yes/No) tracking</li>
+    <li>Multiple issues per portfolio lock</li>
+</ul>
+
+<h3>Locking System</h3>
+<ul>
+    <li>Hour-based portfolio locking</li>
+    <li>One user per portfolio per hour</li>
+    <li>Automatic lock release at hour change</li>
+    <li>Lock release after "All Sites Checked" = Yes</li>
+    <li>Visual indicators (purple border) for locked portfolios</li>
+</ul>
+
+<h3>Session Management</h3>
+<ul>
+    <li>Session-based authentication</li>
+    <li>Session ID tracking via headers</li>
+    <li>Multiple issue logging per session</li>
+    <li>Session sheet for batch logging</li>
+</ul>
+
+<h3>Analytics & Reporting</h3>
+<ul>
+    <li>Performance analytics dashboard</li>
+    <li>Coverage matrix by hour</li>
+    <li>Statistics and metrics</li>
+    <li>CSV export with date filters</li>
+    <li>Charts and visualizations</li>
+</ul>
+
+<h3>Admin Features</h3>
+<ul>
+    <li>User management (create, delete users)</li>
+    <li>Portfolio management (create, delete portfolios)</li>
+    <li>Admin panel access control</li>
+    <li>System administration tools</li>
+</ul>
+
+<h2>QUICK REFERENCE</h2>
+
+<h3>Main Application URL</h3>
+<div class="url-box">
+    https://standardsolarhlsc.netlify.app
+</div>
+
+<h3>Backend API URL</h3>
+<div class="url-box">
+    https://my-mandatory-standard.onrender.com/api
+</div>
+
+<h3>Database URL</h3>
+<div class="url-box">
+    https://wkkclsbaavdlplcqrsyr.supabase.co
+</div>
+
+<h3>Admin Login</h3>
+<ul>
+    <li>Username: <code>admin</code></li>
+    <li>Password: <code>admin123</code></li>
+</ul>
+
+<h3>Test User Login</h3>
+<ul>
+    <li>Username: <code>user1</code> or <code>user2</code></li>
+    <li>Password: <code>user123</code></li>
+</ul>
+
+<h2>SECURITY NOTES</h2>
+
+<div class="warning-box">
+    <h3>⚠️ IMPORTANT SECURITY INFORMATION:</h3>
+    <ol>
+        <li><strong>Admin Credentials:</strong> The admin credentials (<code>admin</code>/<code>admin123</code>) are hardcoded in the application. For production use, implement proper password hashing and database-based authentication.</li>
+        <li><strong>API Keys:</strong> The Supabase keys provided in this document are:
+            <ul>
+                <li><strong>Anon Key:</strong> Public key, safe to expose in frontend</li>
+                <li><strong>Service Key:</strong> Private key, should only be used in backend (never expose in frontend)</li>
+            </ul>
+        </li>
+        <li><strong>Session Management:</strong> Sessions are managed via <code>sessionStorage</code> and session IDs. For production, consider implementing more secure session management.</li>
+        <li><strong>CORS:</strong> CORS is enabled for all origins. Consider restricting this in production.</li>
+    </ol>
+</div>
+
+<h2>SUPPORT & MAINTENANCE</h2>
+
+<h3>Access Points</h3>
+<ul>
+    <li><strong>Netlify Dashboard:</strong> https://app.netlify.com</li>
+    <li><strong>Render Dashboard:</strong> https://dashboard.render.com</li>
+    <li><strong>Supabase Dashboard:</strong> https://supabase.com/dashboard</li>
+</ul>
+
+<h3>Logs & Monitoring</h3>
+<ul>
+    <li><strong>Netlify Logs:</strong> Available in Netlify dashboard under Deploys</li>
+    <li><strong>Render Logs:</strong> Available in Render dashboard under Service logs</li>
+    <li><strong>Supabase Logs:</strong> Available in Supabase dashboard under Logs</li>
+</ul>
+
+<h3>Backup & Recovery</h3>
+<ul>
+    <li><strong>Database:</strong> Supabase provides automatic backups</li>
+    <li><strong>Code:</strong> Version controlled (Git repository)</li>
+    <li><strong>Environment Variables:</strong> Stored in deployment platforms</li>
+</ul>
+
+<hr style="margin-top: 50px;">
+
+<div style="text-align: center; color: #666; margin-top: 30px;">
+    <p><strong>Document Created:</strong> January 2025</p>
+    <p><strong>Last Updated:</strong> January 2025</p>
+    <p><strong>Version:</strong> 1.0</p>
+    <p><strong>Status:</strong> Current</p>
+</div>
+
+<p style="text-align: center; margin-top: 40px; font-size: 14px; color: #999;">
+    <strong>END OF DOCUMENTATION</strong>
+</p>
+
+</body>
+</html>
+
+

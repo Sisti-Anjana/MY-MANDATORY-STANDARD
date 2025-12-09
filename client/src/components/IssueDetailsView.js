@@ -66,6 +66,7 @@ const IssueDetailsView = ({
   );
   const [activeRange, setActiveRange] = useState('today');
   const [searchQuery, setSearchQuery] = useState('');
+  const [issueFilter, setIssueFilter] = useState('yes'); // 'yes' = Issues Yes (default), 'all' = All Issues
   const clearSearch = () => {
     setSearchQuery('');
   };
@@ -107,6 +108,14 @@ const IssueDetailsView = ({
     const searchLower = searchQuery.toLowerCase();
 
     return issues.filter(issue => {
+      // Issue Present filter - default to "Issues Yes" only
+      if (issueFilter === 'yes') {
+        if ((issue.issue_present || '').toString().toLowerCase() !== 'yes') {
+          return false;
+        }
+      }
+      // If 'all', show all issues (no filter applied)
+
       // Apply search filter if search query exists
       if (searchQuery) {
         const searchIn = [
@@ -148,7 +157,7 @@ const IssueDetailsView = ({
 
       return issueDateString >= startDate && issueDateString <= endDate;
     });
-  }, [issues, selectedPortfolio, startDate, endDate, selectedHour, searchQuery]);
+  }, [issues, selectedPortfolio, startDate, endDate, selectedHour, searchQuery, issueFilter]);
 
   const sortedIssues = useMemo(() => {
     return [...filteredIssues].sort((a, b) => {
@@ -169,7 +178,9 @@ const IssueDetailsView = ({
     <div className="text-center py-10 border border-dashed border-gray-300 rounded-lg bg-gray-50">
       <div className="text-lg font-semibold text-gray-700 mb-2">No issues found</div>
       <p className="text-sm text-gray-500">
-        Try selecting a different portfolio or adjusting the date range.
+        {issueFilter === 'yes' 
+          ? 'No issues with "Issue Present = Yes" found. Select "All Issues" to see all issues, or try selecting a different portfolio or adjusting the date range.'
+          : 'Try selecting a different portfolio or adjusting the date range.'}
       </p>
     </div>
   );
@@ -178,15 +189,15 @@ const IssueDetailsView = ({
     <div className="bg-white rounded-lg shadow p-6 space-y-6">
       <div className="flex flex-col gap-6">
         {/* Search Bar */}
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+        <div className="relative max-w-[400px]">
+          <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+            <svg className="h-4 w-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
             </svg>
           </div>
           <input
             type="text"
-            className="block w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            className="block w-full pl-8 pr-8 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             placeholder="Search issues..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -194,24 +205,24 @@ const IssueDetailsView = ({
           {searchQuery && (
             <button
               onClick={clearSearch}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              className="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-400 hover:text-gray-600"
               type="button"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           )}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="lg:col-span-2">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+        <div className="grid grid-cols-4 gap-4 items-end">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
               Select Portfolio
             </label>
             <select
               value={selectedPortfolio}
               onChange={(e) => setSelectedPortfolio(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="">All Portfolios</option>
               {portfolios.map((portfolio) => (
@@ -225,13 +236,26 @@ const IssueDetailsView = ({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+              Issue Filter
+            </label>
+            <select
+              value={issueFilter}
+              onChange={(e) => setIssueFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+            >
+              <option value="yes">Issues Yes (Default)</option>
+              <option value="all">All Issues</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
               Hour Filter
             </label>
             <select
               value={selectedHour}
               onChange={(e) => setSelectedHour(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="">All Hours</option>
               {Array.from({ length: 24 }, (_, i) => i).map(hour => (
@@ -241,18 +265,17 @@ const IssueDetailsView = ({
               ))}
             </select>
           </div>
-
-          <div className="lg:col-span-2">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
               Quick Range
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2">
               {quickRanges.map(range => (
                 <button
                   key={range.key}
                   type="button"
                   onClick={() => handleQuickRange(range.key)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                     activeRange === range.key
                       ? 'bg-green-600 text-white border-green-600'
                       : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
@@ -265,9 +288,9 @@ const IssueDetailsView = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
               Start Date
             </label>
             <input
@@ -275,11 +298,11 @@ const IssueDetailsView = ({
               value={startDate}
               max={endDate || undefined}
               onChange={handleCustomDateChange(setStartDate)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
               End Date
             </label>
             <input
@@ -287,9 +310,10 @@ const IssueDetailsView = ({
               value={endDate}
               min={startDate || undefined}
               onChange={handleCustomDateChange(setEndDate)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
+          <div className="col-span-2"></div>
         </div>
       </div>
 
