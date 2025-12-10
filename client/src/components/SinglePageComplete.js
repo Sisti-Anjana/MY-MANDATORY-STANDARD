@@ -1818,26 +1818,32 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-full mx-auto px-6 py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-full mx-auto px-6 py-4 flex flex-wrap md:flex-nowrap items-center gap-4">
+          {/* Left: Logo (hide if missing) */}
+          <div className="flex items-center">
             <img
               src="/logo.png"
               alt="American Green Solutions"
               className="h-12 w-auto object-contain"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
             />
-            <div className="flex flex-col leading-tight">
-              <span className="text-2xl font-extrabold text-gray-900">Standard Solar</span>
-              <span className="text-sm font-medium text-gray-600">Portfolio Issue Tracker</span>
-            </div>
+          </div>
+
+          {/* Center: Titles */}
+          <div className="flex-1 text-center leading-tight">
+            <div className="text-2xl font-extrabold text-gray-900">Standard Solar</div>
+            <div className="text-sm font-medium text-gray-600">Portfolio Issue Tracker</div>
             {/* Auto-refresh indicator - subtle and non-disruptive */}
             {isAutoRefreshing && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
+              <div className="mt-1 inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
                 <span className="text-xs text-blue-700 font-medium">Refreshing...</span>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4">
+
+          {/* Right: User / actions */}
+          <div className="flex items-center gap-4 justify-end flex-wrap md:flex-nowrap">
             {/* User Info */}
             <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex items-center gap-2">
