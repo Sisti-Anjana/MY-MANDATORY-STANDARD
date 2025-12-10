@@ -32,6 +32,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [sessionPortfolioName, setSessionPortfolioName] = useState(null);
   const [sessionHour, setSessionHour] = useState(null);
+  const [logoMissing, setLogoMissing] = useState(false);
   const [sitesCheckedText, setSitesCheckedText] = useState(''); // Text for which sites were checked when "No" is selected
   const [showSitesCheckedInput, setShowSitesCheckedInput] = useState(false); // Show input when "No" is selected
   const [issueDetailsInitialPortfolioId, setIssueDetailsInitialPortfolioId] = useState('');
@@ -1818,26 +1819,31 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-full mx-auto px-6 py-4 flex flex-wrap md:flex-nowrap items-center gap-4">
-          {/* Left: Logo (hide if missing) */}
-          <div className="flex items-center">
-            <img
-              src="/logo.png"
-              alt="American Green Solutions"
-              className="h-12 w-auto object-contain"
-              onError={(e) => {
-                // Fallback to favicon if logo.png is missing
-                if (e.currentTarget.src.indexOf('/favicon') === -1) {
-                  e.currentTarget.src = '/favicon.png';
-                } else {
-                  e.currentTarget.style.display = 'none';
-                }
-              }}
-            />
+        <div className="max-w-full mx-auto px-4 md:px-6 py-4 flex items-center gap-4">
+          {/* Left: Logo (with fallback) */}
+          <div className="flex items-center flex-shrink-0">
+            {!logoMissing ? (
+              <img
+                src="/logo.png"
+                alt="American Green Solutions"
+                className="h-12 w-auto max-w-[140px] object-contain"
+                onError={(e) => {
+                  if (e.currentTarget.src.indexOf('/favicon') === -1) {
+                    e.currentTarget.src = '/favicon.png';
+                  } else {
+                    setLogoMissing(true);
+                  }
+                }}
+              />
+            ) : (
+              <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-lg shadow-inner">
+                AG
+              </div>
+            )}
           </div>
 
-          {/* Center: Titles */}
-          <div className="flex-1 text-center leading-tight md:ml-6">
+          {/* Center: Titles perfectly centered */}
+          <div className="flex-1 text-center leading-tight">
             <div className="text-2xl font-extrabold text-gray-900">Standard Solar</div>
             <div className="text-sm font-medium text-gray-600">Portfolio Issue Tracker</div>
             {/* Auto-refresh indicator - subtle and non-disruptive */}
@@ -1850,7 +1856,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           </div>
 
           {/* Right: User / actions */}
-          <div className="flex items-center gap-4 justify-end flex-wrap md:flex-nowrap">
+          <div className="flex items-center gap-4 justify-end flex-shrink-0 flex-wrap md:flex-nowrap">
             {/* User Info */}
             <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex items-center gap-2">
