@@ -1818,19 +1818,24 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-full mx-auto px-6 py-4 flex justify-between items-center">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">Portfolio Issue Tracker</h1>
-              {/* Auto-refresh indicator - subtle and non-disruptive */}
-              {isAutoRefreshing && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                  <span className="text-xs text-blue-700 font-medium">Refreshing...</span>
-                </div>
-              )}
+        <div className="max-w-full mx-auto px-6 py-4 flex flex-wrap md:flex-nowrap justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="American Green Solutions"
+              className="h-12 w-auto object-contain"
+            />
+            <div className="flex flex-col leading-tight">
+              <span className="text-2xl font-extrabold text-gray-900">Standard Solar</span>
+              <span className="text-sm font-medium text-gray-600">Portfolio Issue Tracker</span>
             </div>
-            <p className="text-sm text-gray-600 mt-1">Complete issue tracking and analysis system</p>
+            {/* Auto-refresh indicator - subtle and non-disruptive */}
+            {isAutoRefreshing && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                <span className="text-xs text-blue-700 font-medium">Refreshing...</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
             {/* User Info */}
