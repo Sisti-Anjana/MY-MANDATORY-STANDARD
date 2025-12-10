@@ -1825,12 +1825,19 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
               src="/logo.png"
               alt="American Green Solutions"
               className="h-12 w-auto object-contain"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
+              onError={(e) => {
+                // Fallback to favicon if logo.png is missing
+                if (e.currentTarget.src.indexOf('/favicon') === -1) {
+                  e.currentTarget.src = '/favicon.png';
+                } else {
+                  e.currentTarget.style.display = 'none';
+                }
+              }}
             />
           </div>
 
           {/* Center: Titles */}
-          <div className="flex-1 text-center leading-tight">
+          <div className="flex-1 text-center leading-tight md:ml-6">
             <div className="text-2xl font-extrabold text-gray-900">Standard Solar</div>
             <div className="text-sm font-medium text-gray-600">Portfolio Issue Tracker</div>
             {/* Auto-refresh indicator - subtle and non-disruptive */}
