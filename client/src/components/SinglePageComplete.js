@@ -1819,14 +1819,14 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-full mx-auto px-4 md:px-6 py-4 grid grid-cols-[140px,1fr,auto] items-center gap-4">
+        <div className="max-w-full mx-auto px-4 md:px-6 py-4 grid grid-cols-[180px,1fr,auto] items-center gap-4">
           {/* Left: Logo (with fallback) */}
-          <div className="flex items-center flex-shrink-0 h-12 w-[140px]">
+          <div className="flex items-center flex-shrink-0 h-12 w-[180px]">
             {!logoMissing ? (
               <img
                 src="/logo.png"
                 alt="American Green Solutions"
-                className="h-12 w-auto max-w-[140px] object-contain"
+                className="h-12 w-auto max-w-[170px] object-contain"
                 onError={(e) => {
                   if (e.currentTarget.src.indexOf('/favicon') === -1) {
                     e.currentTarget.src = '/favicon.png';
