@@ -24,6 +24,24 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
   const [range, setRange] = useState('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [selectedPerformer, setSelectedPerformer] = useState(null);
+  // Date helpers: display mmddyyyy, store ISO
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}${dd}${yyyy}`;
+  };
+  const inputToISO = (val) => {
+    if (!val) return '';
+    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return '';
+    const [, mm, dd, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
   const rangeConfig = useMemo(() => {
     const now = new Date();
@@ -125,7 +143,10 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
           user,
           issues: 0,
           issuesYes: 0,
-          portfolios: new Set(),
+          missedAlerts: 0,
+          portfolios: new Set(), // For display purposes
+          portfolioVisits: new Set(), // Track unique portfolio visits
+          portfolioIssues: [], // Store issues with times for visit detection
           hours: new Set()
         };
       }
@@ -138,18 +159,94 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
       if (issue.issue_hour !== undefined && issue.issue_hour !== null) {
         bucket.hours.add(issue.issue_hour);
       }
-      // Portfolio tracking
+      // Portfolio tracking - count visits, not issues
       const portfolioName = resolvePortfolioName(issue, portfolios);
       if (portfolioName && portfolioName !== 'Unknown') {
-        bucket.portfolios.add(portfolioName);
+        bucket.portfolios.add(portfolioName); // For display
+        
+        // Store issue with time for visit detection
+        if (!bucket.portfolioIssues) {
+          bucket.portfolioIssues = [];
+        }
+        const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+        bucket.portfolioIssues.push({
+          portfolio: portfolioName,
+          time: issueTime
+        });
       }
     });
 
-    const perUserStats = Object.values(perUserMap).map((u) => ({
-      ...u,
-      portfoliosCount: u.portfolios.size,
-      hoursCount: u.hours.size
-    }));
+    // Count missed alerts for each user separately
+    // An issue is "missed" by a user if their name appears in issues_missed_by
+    periodIssues.forEach((issue) => {
+      if (issue.issues_missed_by) {
+        const missedBy = issue.issues_missed_by.trim();
+        if (missedBy) {
+          // Check if any user in the map matches this missed_by value
+          Object.keys(perUserMap).forEach(userKey => {
+            if (missedBy.toLowerCase().includes(userKey.toLowerCase()) || userKey.toLowerCase().includes(missedBy.toLowerCase())) {
+              perUserMap[userKey].missedAlerts += 1;
+            }
+          });
+        }
+      }
+    });
+
+    // Count missed alerts for each user separately
+    // An issue is "missed" by a user if their name appears in issues_missed_by
+    periodIssues.forEach((issue) => {
+      if (issue.issues_missed_by) {
+        const missedBy = issue.issues_missed_by.trim().toLowerCase();
+        if (missedBy) {
+          // Check if any user in the map matches this missed_by value
+          Object.keys(perUserMap).forEach(userKey => {
+            const userKeyLower = userKey.toLowerCase();
+            // Match if the missed_by field contains the user name or vice versa
+            if (missedBy.includes(userKeyLower) || userKeyLower.includes(missedBy)) {
+              perUserMap[userKey].missedAlerts += 1;
+            }
+          });
+        }
+      }
+    });
+
+    const perUserStats = Object.values(perUserMap).map((u) => {
+      // Detect portfolio visits based on time gaps (>15 minutes = new visit)
+      const portfolioVisitsMap = {};
+      if (u.portfolioIssues) {
+        u.portfolioIssues.forEach(({ portfolio, time }) => {
+          if (!portfolioVisitsMap[portfolio]) {
+            portfolioVisitsMap[portfolio] = [];
+          }
+          portfolioVisitsMap[portfolio].push(time);
+        });
+      }
+
+      let totalVisits = 0;
+      // Count portfolio visits: each lock/unlock session = 1 visit
+      // Group issues logged within 5 seconds as same lock session (1 visit)
+      // Any gap > 5 seconds = new lock session = new visit
+      const SESSION_GAP_MS = 5000; // 5 seconds - issues within this window = same lock session
+      Object.keys(portfolioVisitsMap).forEach(portfolio => {
+        const times = portfolioVisitsMap[portfolio].sort((a, b) => a - b);
+        let visitCount = 0;
+        let lastIssueTime = null;
+        times.forEach(time => {
+          // If first issue or gap > 5 seconds, it's a new lock session = new visit
+          if (!lastIssueTime || (time - lastIssueTime) > SESSION_GAP_MS) {
+            visitCount++;
+          }
+          lastIssueTime = time;
+        });
+        totalVisits += visitCount;
+      });
+
+      return {
+        ...u,
+        portfoliosCount: totalVisits, // Count portfolio visits based on time gaps
+        hoursCount: u.hours.size
+      };
+    });
 
     // Leaderboards
     const byIssuesYes = [...perUserStats].sort((a, b) => b.issuesYes - a.issuesYes || b.issues - a.issues);
@@ -169,9 +266,9 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
       coverageConsistency: hoursWithGoodCoverage,
       perUserStats,
       leaderboard: {
-        issuesYes: byIssuesYes.slice(0, 3),
-        coverage: byCoverage.slice(0, 3),
-        hours: byHours.slice(0, 3)
+        issuesYes: byIssuesYes.slice(0, 7),
+        coverage: byCoverage.slice(0, 7),
+        hours: byHours.slice(0, 7)
       }
     };
   }, [portfolios, rangeConfig]);
@@ -250,7 +347,6 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
               className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 w-full"
-              max={customEnd || undefined}
             />
           </div>
           <div className="flex flex-col max-w-[180px]">
@@ -260,7 +356,6 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
               className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 w-full"
-              min={customStart || undefined}
             />
           </div>
           <div className="flex items-end gap-2">
@@ -293,19 +388,11 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <div className="flex-1 min-w-[150px] max-w-[200px]">
-          <MetricCard label="Overall Coverage" value={`${Math.round(analytics.overallCoverage)}%`} accent="text-green-600" highlight="bg-gradient-to-r from-emerald-50 to-green-100" />
-        </div>
-        <div className="flex-1 min-w-[150px] max-w-[200px]">
-          <MetricCard label="Portfolios Checked" value={analytics.portfoliosChecked} helper={`of ${analytics.totalPortfolios}`} highlight="bg-gradient-to-r from-blue-50 to-sky-100" />
-        </div>
-        <div className="flex-1 min-w-[150px] max-w-[200px]">
-          <MetricCard label="Active Hours" value={`${analytics.activeHours}/24`} highlight="bg-gradient-to-r from-amber-50 to-orange-100" />
-        </div>
-        <div className="flex-1 min-w-[150px] max-w-[200px]">
-          <MetricCard label="Issues Logged" value={analytics.totalIssuesLogged} highlight="bg-gradient-to-r from-purple-50 to-indigo-100" />
-        </div>
+      <div className="grid grid-cols-4 gap-3 max-w-3xl">
+        <MetricCard label="Overall Coverage" value={`${Math.round(analytics.overallCoverage)}%`} accent="text-green-600" highlight="bg-gradient-to-r from-emerald-50 to-green-100" />
+        <MetricCard label="Portfolios Checked" value={analytics.portfoliosChecked} highlight="bg-gradient-to-r from-blue-50 to-sky-100" />
+        <MetricCard label="Monitoring Active Hours" value={`${analytics.activeHours}/24`} highlight="bg-gradient-to-r from-amber-50 to-orange-100" />
+        <MetricCard label="Issues Logged" value={analytics.totalIssuesLogged} highlight="bg-gradient-to-r from-purple-50 to-indigo-100" />
       </div>
 
       {rangeConfig.filteredIssues.length === 0 && (
@@ -336,11 +423,11 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
         <CompactPanel title="Activity Snapshot" description="What’s been logged so far" iconBg="bg-blue-200">
           <dl className="space-y-2 text-sm text-gray-600">
             <div className="flex justify-between">
-              <dt>Total issues logged</dt>
+              <dt>Total Alerts Generated</dt>
               <dd className="font-semibold text-gray-900">{analytics.totalIssuesLogged}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>Active monitoring hours</dt>
+              <dt>Monitoring Active Hours</dt>
               <dd className="font-semibold text-gray-900">{analytics.activeHours}</dd>
             </div>
             <div className="flex justify-between">
@@ -383,76 +470,266 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
 
       {analytics.perUserStats && analytics.perUserStats.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          <CompactPanel title="Top Performers" description="Leaders by coverage and findings" iconBg="bg-purple-200">
-            <LeaderboardBlock label="Most issues (Yes)" items={analytics.leaderboard.issuesYes} metricKey="issuesYes" fallback="No data" />
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <LeaderboardBlock label="Most portfolios covered" items={analytics.leaderboard.coverage} metricKey="portfoliosCount" fallback="No data" />
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
+              <h3 className="text-sm font-semibold text-gray-900">Top Performers</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Leaders by coverage and findings</p>
             </div>
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <LeaderboardBlock label="Most active hours" items={analytics.leaderboard.hours} metricKey="hoursCount" fallback="No data" />
-            </div>
-          </CompactPanel>
-
-          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">Team Performance (per user)</h3>
-                <p className="text-sm text-gray-500">Filtered by the selected range ({RANGE_OPTIONS.find(r => r.value === range)?.label})</p>
+            <div className="p-5 space-y-6">
+              <LeaderboardBlock 
+                label="Most Total Portfolios Monitored" 
+                items={analytics.leaderboard.coverage} 
+                metricKey="portfoliosCount" 
+                fallback="No data"
+                onItemClick={setSelectedPerformer}
+                allUserStats={analytics.perUserStats}
+              />
+              <div className="border-t border-gray-200 pt-5">
+                <LeaderboardBlock 
+                  label="Most Active Issues" 
+                  items={analytics.leaderboard.issuesYes} 
+                  metricKey="issuesYes" 
+                  fallback="No data"
+                  onItemClick={setSelectedPerformer}
+                  allUserStats={analytics.perUserStats}
+                />
               </div>
-              <button
-                onClick={() => {
-                  const header = ['User', 'Total Issues', 'Issues Yes', 'Portfolios Covered', 'Hours Active'];
-                  const rows = analytics.perUserStats.map(u => [
-                    u.user,
-                    u.issues,
-                    u.issuesYes,
-                    u.portfoliosCount,
-                    u.hoursCount
-                  ]);
-                  const csvContent = [header, ...rows]
-                    .map(row => row.map(cell => `"${cell}"`).join(','))
-                    .join('\n');
-                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                  const link = document.createElement('a');
-                  const url = URL.createObjectURL(blob);
-                  link.setAttribute('href', url);
-                  link.setAttribute('download', `user-performance-${range}-${new Date().toISOString().split('T')[0]}.csv`);
-                  link.style.visibility = 'hidden';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }}
-                className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow transition-colors"
-                style={{ backgroundColor: '#76AB3F' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
-              >
-                Export Data
-              </button>
+              <div className="border-t border-gray-200 pt-5">
+                <LeaderboardBlock 
+                  label="Most Monitoring Active Hours" 
+                  items={analytics.leaderboard.hours} 
+                  metricKey="hoursCount" 
+                  fallback="No data"
+                  onItemClick={setSelectedPerformer}
+                  allUserStats={analytics.perUserStats}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+            <div className="px-6 py-4" style={{ backgroundColor: '#76AB3F' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Team Performance</h3>
+                  <p className="text-sm text-white/90 mt-0.5">Filtered by: {RANGE_OPTIONS.find(r => r.value === range)?.label}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const header = ['User', 'Total Alerts Generated', 'Total Portfolios Monitored', 'Monitoring Active Hours', 'Missed Alerts'];
+                    const rows = analytics.perUserStats.map(u => [
+                      u.user,
+                      u.issues,
+                      u.portfoliosCount,
+                      u.hoursCount,
+                      u.missedAlerts || 0
+                    ]);
+                    const csvContent = [header, ...rows]
+                      .map(row => row.map(cell => `"${cell}"`).join(','))
+                      .join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', `user-performance-${range}-${new Date().toISOString().split('T')[0]}.csv`);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg shadow-md hover:shadow-lg transition-all hover:scale-105 flex items-center gap-2"
+                  style={{ backgroundColor: '#76AB3F', color: 'white' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export Data
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-600 uppercase text-xs tracking-wide">
+              <table className="min-w-full">
+                <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    <th className="px-3 py-2">User</th>
-                    <th className="px-3 py-2 text-right">Issues</th>
-                    <th className="px-3 py-2 text-right">Issues Yes</th>
-                    <th className="px-3 py-2 text-right">Portfolios</th>
-                    <th className="px-3 py-2 text-right">Hours</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">User</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Total Alerts Generated</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Total Portfolios Monitored</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Monitoring Active Hours</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Missed Alerts</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-800">
-                  {analytics.perUserStats.map((u) => (
-                    <tr key={u.user}>
-                      <td className="px-3 py-2 font-semibold text-gray-900">{u.user}</td>
-                      <td className="px-3 py-2 text-right">{u.issues}</td>
-                      <td className="px-3 py-2 text-right">{u.issuesYes}</td>
-                      <td className="px-3 py-2 text-right">{u.portfoliosCount}</td>
-                      <td className="px-3 py-2 text-right">{u.hoursCount}</td>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {analytics.perUserStats.map((u, idx) => (
+                    <tr 
+                      key={u.user} 
+                      className={`transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                      style={{ '--hover-color': 'rgba(118, 171, 63, 0.1)' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(118, 171, 63, 0.1)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = idx % 2 === 0 ? 'white' : 'rgba(0, 0, 0, 0.02)'}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm" style={{ backgroundColor: '#76AB3F' }}>
+                            {u.user.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-bold text-gray-900">{u.user}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <span className="text-sm font-semibold text-gray-900">{u.issues}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
+                          {u.portfoliosCount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-purple-100 text-purple-800">
+                          {u.hoursCount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                          (u.missedAlerts || 0) === 0 
+                            ? 'text-white' 
+                            : (u.missedAlerts || 0) <= 3 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                        style={(u.missedAlerts || 0) === 0 ? { backgroundColor: '#76AB3F' } : {}}
+                        >
+                          {u.missedAlerts || 0}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Performer Details Modal */}
+      {selectedPerformer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedPerformer(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Header with gradient */}
+            <div className="px-4 py-3 text-white" style={{ backgroundColor: '#76AB3F' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold">Top Performer Details</h3>
+                  <p className="text-xs text-white/90 mt-0.5">Performance breakdown</p>
+                </div>
+                <button
+                  onClick={() => setSelectedPerformer(null)}
+                  className="text-white/80 hover:text-white transition-colors bg-white/10 hover:bg-white/20 rounded p-1"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 space-y-3">
+              {/* User Info Card */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold text-white ${
+                    selectedPerformer.rank === 1 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                    selectedPerformer.rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                    selectedPerformer.rank === 3 ? 'bg-gradient-to-br from-orange-300 to-orange-500' :
+                    'bg-gradient-to-br from-gray-400 to-gray-600'
+                  }`}>
+                    {selectedPerformer.rank}
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-bold text-gray-900">{selectedPerformer.user}</h4>
+                    <p className="text-xs text-gray-600">Rank #{selectedPerformer.rank} in this category</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category Info */}
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-1 h-4 rounded" style={{ backgroundColor: '#76AB3F' }}></div>
+                  <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Category Information</h5>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                    <span className="text-xs text-gray-500">Category</span>
+                    <span className="text-xs font-semibold text-gray-900">{selectedPerformer.category}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                    <span className="text-xs text-gray-500">Metric</span>
+                    <span className="text-xs font-semibold text-gray-900">{selectedPerformer.metric}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-xs text-gray-500">Achieved Value</span>
+                    <span className="text-base font-bold" style={{ color: '#76AB3F' }}>{selectedPerformer.value}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Why Top List */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+                <p className="text-xs font-semibold text-blue-900 mb-1">Why they're in the top list</p>
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  {selectedPerformer.user} achieved <strong className="font-bold">{selectedPerformer.value}</strong> {selectedPerformer.metric.toLowerCase()}, ranking them #{selectedPerformer.rank} among all team members in the "{selectedPerformer.category}" category.
+                </p>
+              </div>
+
+              {/* Additional Performance Metrics */}
+              {selectedPerformer.fullStats && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-1 h-4 rounded" style={{ backgroundColor: '#76AB3F' }}></div>
+                    <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Complete Performance Metrics</h5>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+                      <p className="text-xs font-semibold text-blue-700 mb-1">Total Alerts Generated</p>
+                      <p className="text-lg font-bold text-blue-900">{selectedPerformer.fullStats.issues || 0}</p>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-2.5">
+                      <p className="text-xs font-semibold text-red-700 mb-1">Active Issues</p>
+                      <p className="text-lg font-bold text-red-900">{selectedPerformer.fullStats.issuesYes || 0}</p>
+                    </div>
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-2.5">
+                      <p className="text-xs font-semibold text-purple-700 mb-1">Active Hours</p>
+                      <p className="text-lg font-bold text-purple-900">{selectedPerformer.fullStats.hoursCount || 0}</p>
+                    </div>
+                    <div className={`border rounded-lg p-2.5 ${
+                      (selectedPerformer.fullStats.missedAlerts || 0) === 0 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-orange-50 border-orange-200'
+                    }`}>
+                      <p className={`text-xs font-semibold mb-1 ${(selectedPerformer.fullStats.missedAlerts || 0) === 0 ? 'text-green-700' : 'text-orange-700'}`}>Missed Alerts</p>
+                      <p className={`text-lg font-bold ${(selectedPerformer.fullStats.missedAlerts || 0) === 0 ? 'text-green-900' : 'text-orange-900'}`}>
+                        {selectedPerformer.fullStats.missedAlerts || 0}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setSelectedPerformer(null)}
+                className="px-4 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors"
+                style={{ backgroundColor: '#76AB3F' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -471,14 +748,9 @@ const MetricCard = ({ label, value, helper, accent, highlight }) => (
   </div>
 );
 
-const CompactPanel = ({ title, description, iconBg, children }) => (
+const CompactPanel = ({ title, description, children }) => (
   <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm space-y-3">
-    <div className="flex items-start gap-2">
-      <div className={`w-9 h-9 ${iconBg} rounded-lg flex items-center justify-center`}>
-        <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </div>
+    <div className="flex items-start">
       <div>
         <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
         <p className="text-xs text-gray-500">{description}</p>
@@ -502,23 +774,73 @@ const ProgressBar = ({ value, max, color }) => {
   );
 };
 
-const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data' }) => (
-  <div>
-    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</div>
-    {items && items.length > 0 ? (
-      <div className="flex flex-col gap-1">
-        {items.map((item, idx) => (
-          <div key={item.user} className="flex items-center justify-between text-sm text-gray-800">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-600 text-[11px] font-semibold flex items-center justify-center">{idx + 1}</span>
-              <span className="font-semibold">{item.user}</span>
-            </div>
-            <span className="text-gray-700 font-semibold">{item[metricKey]}</span>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="text-sm text-gray-500">{fallback}</div>
-    )}
-  </div>
-);
+const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', onItemClick, allUserStats }) => {
+  const getMetricDescription = (metricKey) => {
+    switch(metricKey) {
+      case 'portfoliosCount':
+        return 'Total Portfolios Monitored';
+      case 'issuesYes':
+        return 'Active Issues';
+      case 'hoursCount':
+        return 'Monitoring Active Hours';
+      default:
+        return metricKey;
+    }
+  };
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">{label}</h4>
+      {items && items.length > 0 ? (
+        <div className="space-y-2">
+          {items.map((item, idx) => {
+            const isTopThree = idx < 3;
+            // Find complete user stats
+            const fullUserStats = allUserStats?.find(u => u.user === item.user);
+            return (
+              <div 
+                key={item.user} 
+                onClick={() => onItemClick && onItemClick({
+                  user: item.user,
+                  rank: idx + 1,
+                  value: item[metricKey],
+                  category: label,
+                  metric: getMetricDescription(metricKey),
+                  fullStats: fullUserStats
+                })}
+                className={`flex items-center justify-between py-2.5 px-3 rounded-lg transition-all cursor-pointer ${
+                  isTopThree 
+                    ? 'bg-gray-50 border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300' 
+                    : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
+                    idx === 0 ? 'bg-green-100 text-green-700' :
+                    idx === 1 ? 'bg-blue-100 text-blue-700' :
+                    idx === 2 ? 'bg-purple-100 text-purple-700' :
+                    'bg-gray-100 text-gray-500'
+                  }`}>
+                    {idx + 1}
+                  </div>
+                  <span className={`text-sm truncate ${isTopThree ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
+                    {item.user}
+                  </span>
+                </div>
+                <span className={`text-sm ml-3 flex-shrink-0 px-2.5 py-1 rounded ${
+                  isTopThree 
+                    ? 'font-bold text-gray-900 bg-white border border-gray-200' 
+                    : 'font-semibold text-gray-700'
+                }`}>
+                  {item[metricKey]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-sm text-gray-400 py-3 text-center">{fallback}</div>
+      )}
+    </div>
+  );
+};

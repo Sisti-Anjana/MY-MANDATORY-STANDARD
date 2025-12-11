@@ -93,7 +93,24 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
   const [userSearch, setUserSearch] = useState(''); // Search by user name
   // Default to all hours
   const [selectedHour, setSelectedHour] = useState(''); // Filter by single hour (empty = all hours)
-  const [issueFilter, setIssueFilter] = useState('all'); // 'yes' = Issues Yes only, 'all' = All Issues (default for coverage)
+  const [issueFilter, setIssueFilter] = useState('all'); // 'yes' = Active Issues only, 'all' = All Issues (default for coverage)
+  // Date helpers: display mmddyyyy, store ISO
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}${dd}${yyyy}`;
+    };
+  const inputToISO = (val) => {
+    if (!val) return '';
+    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return '';
+    const [, mm, dd, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
   const [hoveredCell, setHoveredCell] = useState(null); // { user, hour, position: { top, left } }
   const [chartUserSearch, setChartUserSearch] = useState(''); // Search for users in chart
   const [selectedUser, setSelectedUser] = useState(null); // Selected user for detailed view
@@ -226,12 +243,16 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
           }
         );
 
-        // Get unique portfolios covered by this user in this hour
-        const uniquePortfolios = new Set();
+        // Count portfolio VISITS (not issues) - detect separate visits based on time gaps
+        // Group issues by portfolio and detect visits: if gap > 15 minutes = new visit
+        const portfolioVisitsMap = {}; // Track visits per portfolio: { portfolioName: [visitTimes] }
+        const portfolioInstances = []; // All portfolio visits for display
+        const uniquePortfolios = new Set(); // For display purposes
         const issuesYes = []; // Issues with issue_present = "Yes"
 
+        // First, collect all issues with their times, grouped by portfolio
+        const portfolioIssuesMap = {};
         userHourIssues.forEach((issue) => {
-          // Handle portfolio_name - might come from join or be set directly
           const portfolioName = issue.portfolio_name || 
                                issue.portfolios?.name || 
                                (issue.portfolio_id && portfolios.find(p => 
@@ -240,31 +261,55 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                                'Unknown';
           if (portfolioName && portfolioName !== 'Unknown') {
             uniquePortfolios.add(portfolioName);
-          }
-          // Track issues with "Yes"
-          if ((issue.issue_present || '').toLowerCase() === 'yes') {
-            const portfolioNameForIssue = issue.portfolio_name || 
-                                          issue.portfolios?.name || 
-                                          (issue.portfolio_id && portfolios.find(p => 
-                                            (p.portfolio_id || p.id) === issue.portfolio_id
-                                          )?.name) ||
-                                          'Unknown';
-            issuesYes.push({
-              portfolio: portfolioNameForIssue,
-              details: issue.issue_details || 'No details',
-              caseNumber: issue.case_number || 'N/A',
-              date: issue.created_at ? new Date(issue.created_at).toLocaleString() : 'N/A'
+            if (!portfolioIssuesMap[portfolioName]) {
+              portfolioIssuesMap[portfolioName] = [];
+            }
+            const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+            portfolioIssuesMap[portfolioName].push({
+              time: issueTime,
+              issue: issue
             });
           }
         });
 
-        const portfolioCount = uniquePortfolios.size;
-        const portfolioNames = Array.from(uniquePortfolios);
+        // Count portfolio visits: each lock/unlock session = 1 visit
+        // Group issues logged within 5 seconds as same lock session (1 visit)
+        // Any gap > 5 seconds = new lock session = new visit
+        Object.keys(portfolioIssuesMap).forEach(portfolioName => {
+          const issues = portfolioIssuesMap[portfolioName].sort((a, b) => a.time - b.time);
+          let visitCount = 0;
+          let lastIssueTime = null;
+          const SESSION_GAP_MS = 5000; // 5 seconds - issues within this window = same lock session
+
+          issues.forEach(({ time, issue }) => {
+            // If first issue or gap > 5 seconds, it's a new lock session = new visit
+            if (!lastIssueTime || (time - lastIssueTime) > SESSION_GAP_MS) {
+              visitCount++;
+              portfolioInstances.push(portfolioName); // Count each lock session as one visit
+            }
+            lastIssueTime = time;
+
+            // Track issues with "Yes"
+            if ((issue.issue_present || '').toLowerCase() === 'yes') {
+              issuesYes.push({
+                portfolio: portfolioName,
+                details: issue.issue_details || 'No details',
+                caseNumber: issue.case_number || 'N/A',
+                date: issue.created_at ? new Date(issue.created_at).toLocaleString() : 'N/A'
+              });
+            }
+          });
+        });
+
+        const portfolioCount = portfolioInstances.length; // Count portfolio visits, not issues
+        const portfolioNames = Array.from(uniquePortfolios); // Keep unique names for display
 
         // Store cell data for hover tooltip
         const cellKey = `${user}-${hour}`;
         cellData[cellKey] = {
-          portfolios: portfolioNames,
+          portfolios: portfolioNames, // Unique portfolio names for display
+          portfolioInstances: portfolioInstances, // All instances (including duplicates)
+          totalCount: portfolioCount, // Total count matching the cell value
           issuesYes: issuesYes
         };
 
@@ -367,10 +412,12 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       issue.issues_missed_by && issue.issues_missed_by.toLowerCase().includes(selectedUser.toLowerCase())
     ).length;
     
-    const uniquePortfolios = new Set();
+    const uniquePortfolios = new Set(); // For display purposes
+    const portfolioIssuesMap = {}; // Group issues by portfolio for visit detection
     const uniqueHours = new Set();
     const hourlyBreakdown = {};
     
+    // First, collect all issues grouped by portfolio
     userIssues.forEach(issue => {
       const portfolioName = issue.portfolio_name || 
                            issue.portfolios?.name || 
@@ -380,20 +427,83 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                            'Unknown';
       if (portfolioName && portfolioName !== 'Unknown') {
         uniquePortfolios.add(portfolioName);
+        if (!portfolioIssuesMap[portfolioName]) {
+          portfolioIssuesMap[portfolioName] = [];
+        }
+        const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+        portfolioIssuesMap[portfolioName].push({
+          time: issueTime,
+          hour: issue.issue_hour !== undefined && issue.issue_hour !== null ? issue.issue_hour : issueTime.getHours(),
+          issue: issue
+        });
       }
       
       if (issue.issue_hour !== undefined && issue.issue_hour !== null) {
         uniqueHours.add(issue.issue_hour);
         if (!hourlyBreakdown[issue.issue_hour]) {
-          hourlyBreakdown[issue.issue_hour] = { portfolios: new Set(), issues: 0, issuesYes: 0 };
+          hourlyBreakdown[issue.issue_hour] = { portfolioIssues: {}, portfolios: new Set(), issues: 0, issuesYes: 0 };
         }
         hourlyBreakdown[issue.issue_hour].portfolios.add(portfolioName);
         hourlyBreakdown[issue.issue_hour].issues += 1;
         if ((issue.issue_present || '').toString().toLowerCase() === 'yes') {
           hourlyBreakdown[issue.issue_hour].issuesYes += 1;
         }
+        
+        // Store issue for visit detection per hour
+        if (portfolioName && portfolioName !== 'Unknown') {
+          if (!hourlyBreakdown[issue.issue_hour].portfolioIssues[portfolioName]) {
+            hourlyBreakdown[issue.issue_hour].portfolioIssues[portfolioName] = [];
+          }
+          const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+          hourlyBreakdown[issue.issue_hour].portfolioIssues[portfolioName].push(issueTime);
+        }
       }
     });
+    
+    // Count total portfolio visits: each lock/unlock session = 1 visit
+    // Group issues logged within 5 seconds as same lock session (1 visit)
+    // Any gap > 5 seconds = new lock session = new visit
+    let totalVisits = 0;
+    const SESSION_GAP_MS = 5000; // 5 seconds - issues within this window = same lock session
+    Object.keys(portfolioIssuesMap).forEach(portfolioName => {
+      const issues = portfolioIssuesMap[portfolioName].sort((a, b) => a.time - b.time);
+      let visitCount = 0;
+      let lastIssueTime = null;
+      issues.forEach(({ time }) => {
+        // If first issue or gap > 5 seconds, it's a new lock session = new visit
+        if (!lastIssueTime || (time - lastIssueTime) > SESSION_GAP_MS) {
+          visitCount++;
+        }
+        lastIssueTime = time;
+      });
+      totalVisits += visitCount;
+    });
+    
+    // Count portfolio visits per hour: each lock/unlock session = 1 visit
+    const hourlyBreakdownWithVisits = Object.keys(hourlyBreakdown).map(hour => {
+      const hourData = hourlyBreakdown[hour];
+      let hourVisits = 0;
+      Object.keys(hourData.portfolioIssues).forEach(portfolioName => {
+        const times = hourData.portfolioIssues[portfolioName].sort((a, b) => a - b);
+        let visitCount = 0;
+        let lastIssueTime = null;
+        times.forEach(time => {
+          // If first issue or gap > 5 seconds, it's a new lock session = new visit
+          if (!lastIssueTime || (time - lastIssueTime) > SESSION_GAP_MS) {
+            visitCount++;
+          }
+          lastIssueTime = time;
+        });
+        hourVisits += visitCount;
+      });
+      
+      return {
+        hour: parseInt(hour, 10),
+        portfolios: hourVisits, // Count portfolio visits per hour based on time gaps
+        issues: hourData.issues,
+        issuesYes: hourData.issuesYes
+      };
+    }).sort((a, b) => a.hour - b.hour);
     
     return {
       userName: selectedUser,
@@ -401,15 +511,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       issuesYes,
       issuesNo: userIssues.length - issuesYes,
       issuesMissed,
-      portfoliosCovered: uniquePortfolios.size,
+      portfoliosCovered: totalVisits, // Count portfolio visits based on time gaps
       hoursActive: uniqueHours.size,
-      portfolioNames: Array.from(uniquePortfolios),
-      hourlyBreakdown: Object.keys(hourlyBreakdown).map(hour => ({
-        hour: parseInt(hour, 10),
-        portfolios: hourlyBreakdown[hour].portfolios.size,
-        issues: hourlyBreakdown[hour].issues,
-        issuesYes: hourlyBreakdown[hour].issuesYes
-      })).sort((a, b) => a.hour - b.hour)
+      portfolioNames: Array.from(uniquePortfolios), // Unique names for display
+      hourlyBreakdown: hourlyBreakdownWithVisits
     };
   }, [selectedUser, filteredIssues, portfolios]);
 
@@ -489,7 +594,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
               <option value="all">All Issues (Coverage)</option>
-              <option value="yes">Issues Yes Only</option>
+              <option value="yes">Active Issues Only</option>
             </select>
           </div>
 
@@ -580,52 +685,40 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 setStartDate(e.target.value);
                 setActiveRange('custom');
               }}
-              max={endDate || undefined}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             />
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
-              To Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setActiveRange('custom');
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setActiveRange('custom');
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              />
+            </div>
+            <button
+              onClick={() => {
+                const range = getDateRange('today');
+                setStartDate(range.start);
+                setEndDate(range.end);
+                setActiveRange('today');
+                setUserSearch('');
+                setSelectedHour(''); // Reset to all hours
+                setIssueFilter('all'); // Reset to all issues
               }}
-              min={startDate || undefined}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-            />
+              className="px-3 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
+            >
+              Reset All Filters
+            </button>
           </div>
           <div className="col-span-2"></div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              const range = getDateRange('today');
-              setStartDate(range.start);
-              setEndDate(range.end);
-              setActiveRange('today');
-              setUserSearch('');
-              setSelectedHour(''); // Reset to all hours
-              setIssueFilter('all'); // Reset to all issues
-            }}
-            className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            Reset All Filters
-          </button>
-          <button
-            onClick={exportToCSV}
-            className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow transition-colors"
-            style={{ backgroundColor: '#76AB3F' }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
-          >
-            Export Matrix
-          </button>
         </div>
       </div>
 
@@ -633,16 +726,9 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       {showCharts && matrix.rows.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <div className="bg-gradient-to-r from-[#76AB3F] to-[#5a8f2f] px-6 py-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">User Coverage Performance</h3>
-                <p className="text-sm text-green-50">Top performers by portfolio coverage</p>
-              </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">User Coverage Performance</h3>
+              <p className="text-sm text-green-50">Top performers by portfolio coverage</p>
             </div>
           </div>
           <div className="p-6">
@@ -678,7 +764,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               {userChartData.length > 0 && (
                 <button
                   onClick={() => {
-                    const header = ['User', 'Portfolios Covered'];
+                    const header = ['User', 'Total Portfolios Monitored'];
                     const rows = userChartData.map(entry => [
                       entry.fullName,
                       entry.portfolios
@@ -733,7 +819,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 />
                 <YAxis 
                   label={{ 
-                    value: 'Portfolios Covered', 
+                    value: 'Total Portfolios Monitored', 
                     angle: -90, 
                     position: 'insideLeft', 
                     style: { fontSize: 13, fontWeight: 600, fill: '#374151' } 
@@ -753,7 +839,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   }}
                   formatter={(value, name) => [
                     <span key="value" style={{ fontWeight: 700, color: '#76AB3F', fontSize: '14px' }}>{value}</span>,
-                    <span key="name" style={{ color: '#6b7280' }}>Portfolios Covered</span>
+                    <span key="name" style={{ color: '#6b7280' }}>Total Portfolios Monitored</span>
                   ]}
                   labelFormatter={(label, payload) => (
                     <div style={{ fontWeight: 600, color: '#111827', marginBottom: '4px', fontSize: '14px' }}>
@@ -825,30 +911,30 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Issues</div>
+                  <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Alerts Generated</div>
                   <div className="text-2xl font-bold text-blue-900 mt-1">{selectedUserDetails.totalIssues}</div>
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-red-600 uppercase tracking-wide">Issues Yes</div>
+                  <div className="text-xs font-semibold text-red-600 uppercase tracking-wide">Active Issues</div>
                   <div className="text-2xl font-bold text-red-900 mt-1">{selectedUserDetails.issuesYes}</div>
                 </div>
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-green-600 uppercase tracking-wide">Issues No</div>
+                  <div className="text-xs font-semibold text-green-600 uppercase tracking-wide">Healthy Sites</div>
                   <div className="text-2xl font-bold text-green-900 mt-1">{selectedUserDetails.issuesNo}</div>
                 </div>
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Issues Missed</div>
+                  <div className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Missed Alerts</div>
                   <div className="text-2xl font-bold text-orange-900 mt-1">{selectedUserDetails.issuesMissed}</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Portfolios Covered</div>
+                  <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Total Portfolios Monitored</div>
                   <div className="text-2xl font-bold text-purple-900 mt-1">{selectedUserDetails.portfoliosCovered}</div>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Hours Active</div>
+                  <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Monitoring Active Hours</div>
                   <div className="text-2xl font-bold text-indigo-900 mt-1">{selectedUserDetails.hoursActive}</div>
                 </div>
               </div>
@@ -856,7 +942,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               {/* Portfolios List */}
               {selectedUserDetails.portfolioNames.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Portfolios Covered ({selectedUserDetails.portfolioNames.length})</h4>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Total Portfolios Monitored ({selectedUserDetails.portfolioNames.length})</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedUserDetails.portfolioNames.map((portfolio, idx) => (
                       <span key={idx} className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
@@ -893,7 +979,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                       />
                       <Bar dataKey="portfolios" fill="#76AB3F" name="Portfolios" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="issues" fill="#3b82f6" name="Issues" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="issuesYes" fill="#ef4444" name="Issues Yes" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="issuesYes" fill="#ef4444" name="Active Issues" radius={[4, 4, 0, 0]} />
                       <Legend />
                     </BarChart>
                   </ResponsiveContainer>
@@ -910,8 +996,8 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                         <tr>
                           <th className="px-4 py-2 text-left font-semibold text-gray-700">Hour</th>
                           <th className="px-4 py-2 text-right font-semibold text-gray-700">Portfolios</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Total Issues</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Issues Yes</th>
+                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Total Alerts Generated</th>
+                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Active Issues</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -933,14 +1019,23 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         </div>
       )}
 
-      {/* Toggle Charts Button */}
+      {/* Toggle Charts Button and Export Matrix */}
       {matrix.rows.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex justify-end items-center gap-3">
           <button
             onClick={() => setShowCharts(!showCharts)}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             {showCharts ? 'Hide Charts' : 'Show Charts'}
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow transition-colors"
+            style={{ backgroundColor: '#76AB3F' }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
+          >
+            Export Matrix
           </button>
         </div>
       )}
@@ -968,30 +1063,30 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Issues</div>
+                  <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Total Alerts Generated</div>
                   <div className="text-2xl font-bold text-blue-900 mt-1">{selectedUserDetails.totalIssues}</div>
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-red-600 uppercase tracking-wide">Issues Yes</div>
+                  <div className="text-xs font-semibold text-red-600 uppercase tracking-wide">Active Issues</div>
                   <div className="text-2xl font-bold text-red-900 mt-1">{selectedUserDetails.issuesYes}</div>
                 </div>
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-green-600 uppercase tracking-wide">Issues No</div>
+                  <div className="text-xs font-semibold text-green-600 uppercase tracking-wide">Healthy Sites</div>
                   <div className="text-2xl font-bold text-green-900 mt-1">{selectedUserDetails.issuesNo}</div>
                 </div>
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Issues Missed</div>
+                  <div className="text-xs font-semibold text-orange-600 uppercase tracking-wide">Missed Alerts</div>
                   <div className="text-2xl font-bold text-orange-900 mt-1">{selectedUserDetails.issuesMissed}</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Portfolios Covered</div>
+                  <div className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Total Portfolios Monitored</div>
                   <div className="text-2xl font-bold text-purple-900 mt-1">{selectedUserDetails.portfoliosCovered}</div>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                  <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Hours Active</div>
+                  <div className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Monitoring Active Hours</div>
                   <div className="text-2xl font-bold text-indigo-900 mt-1">{selectedUserDetails.hoursActive}</div>
                 </div>
               </div>
@@ -999,7 +1094,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               {/* Portfolios List */}
               {selectedUserDetails.portfolioNames.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Portfolios Covered ({selectedUserDetails.portfolioNames.length})</h4>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Total Portfolios Monitored ({selectedUserDetails.portfolioNames.length})</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedUserDetails.portfolioNames.map((portfolio, idx) => (
                       <span key={idx} className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
@@ -1036,7 +1131,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                       />
                       <Bar dataKey="portfolios" fill="#76AB3F" name="Portfolios" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="issues" fill="#3b82f6" name="Issues" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="issuesYes" fill="#ef4444" name="Issues Yes" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="issuesYes" fill="#ef4444" name="Active Issues" radius={[4, 4, 0, 0]} />
                       <Legend />
                     </BarChart>
                   </ResponsiveContainer>
@@ -1053,8 +1148,8 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                         <tr>
                           <th className="px-4 py-2 text-left font-semibold text-gray-700">Hour</th>
                           <th className="px-4 py-2 text-right font-semibold text-gray-700">Portfolios</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Total Issues</th>
-                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Issues Yes</th>
+                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Total Alerts Generated</th>
+                          <th className="px-4 py-2 text-right font-semibold text-gray-700">Active Issues</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -1082,7 +1177,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
             <h3 className="text-lg font-semibold text-gray-900">Coverage Overview</h3>
             <p className="text-xs text-gray-500">
               {matrix.grandTotal} portfolio coverage(s) across {matrix.rows.length} user(s) • {selectedHour && selectedHour !== '' ? `Hour ${selectedHour}:00` : '24 hours'}
-              {issueFilter === 'yes' && <span className="ml-1">(Issues Yes only)</span>}
+              {issueFilter === 'yes' && <span className="ml-1">(Active Issues only)</span>}
               {(userSearch || (selectedHour && selectedHour !== '') || issueFilter === 'yes') && (
                 <span className="ml-2 text-green-600 font-semibold">
                   (Filtered)
@@ -1135,7 +1230,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                     >
                       <div>{row.userName}</div>
                       <div className="text-xs text-gray-400 font-normal">
-                        {row.total} portfolio{row.total === 1 ? '' : 's'} covered
+                        {row.total} portfolio{row.total === 1 ? '' : 's'} summary
                       </div>
                     </th>
                     {hours.map((hour) => {
@@ -1188,18 +1283,26 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                                 {row.userName} - Hour {hour}:00
                               </div>
                               
-                              {/* Portfolios Covered */}
-                              {cellInfo.portfolios.length > 0 && (
+                              {/* Total Portfolios Monitored */}
+                              {cellInfo.totalCount > 0 && (
                                 <div className="mb-3">
                                   <div className="font-semibold text-green-400 mb-1">
-                                    Portfolios Covered ({cellInfo.portfolios.length}):
+                                    Total Portfolios Monitored ({cellInfo.totalCount}):
                                   </div>
                                   <div className="space-y-1 max-h-32 overflow-y-auto">
-                                    {cellInfo.portfolios.map((portfolio, idx) => (
-                                      <div key={idx} className="text-gray-200 pl-2">
-                                        • {portfolio}
-                                      </div>
-                                    ))}
+                                    {cellInfo.portfolioInstances && cellInfo.portfolioInstances.length > 0 ? (
+                                      cellInfo.portfolioInstances.map((portfolio, idx) => (
+                                        <div key={idx} className="text-gray-200 pl-2">
+                                          • {portfolio}
+                                        </div>
+                                      ))
+                                    ) : (
+                                      cellInfo.portfolios.map((portfolio, idx) => (
+                                        <div key={idx} className="text-gray-200 pl-2">
+                                          • {portfolio}
+                                        </div>
+                                      ))
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -1208,7 +1311,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                               {cellInfo.issuesYes.length > 0 && (
                                 <div>
                                   <div className="font-semibold text-red-400 mb-1">
-                                    Issues Yes ({cellInfo.issuesYes.length}):
+                                    Active Issues ({cellInfo.issuesYes.length}):
                                   </div>
                                   <div className="space-y-2 max-h-40 overflow-y-auto">
                                     {cellInfo.issuesYes.map((issue, idx) => (

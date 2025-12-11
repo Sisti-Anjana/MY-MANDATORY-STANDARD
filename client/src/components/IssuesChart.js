@@ -91,7 +91,7 @@ const IssuesChart = ({ issues, coverageData }) => {
           <div className="text-2xl font-bold text-gray-900">
             {chartData.filter(d => d.coverage > 0).length}
           </div>
-          <div className="text-sm text-gray-600">Active Hours</div>
+          <div className="text-sm text-gray-600">Monitoring Active Hours</div>
         </div>
       </div>
     </div>

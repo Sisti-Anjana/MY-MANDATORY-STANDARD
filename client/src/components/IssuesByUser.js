@@ -7,7 +7,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
     monitoredBy: '',
     startDate: '',
     endDate: '',
-    issueFilter: 'yes' // 'yes' = Issues Yes (default), 'all' = All Issues
+    issueFilter: 'yes' // 'yes' = Active Issues (default), 'all' = All Issues
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -21,10 +21,28 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedUserForAnalytics, setSelectedUserForAnalytics] = useState(''); // Individual user filter
 
+  // Date helpers: display mmddyyyy, store ISO
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}${dd}${yyyy}`;
+  };
+  const inputToISO = (val) => {
+    if (!val) return '';
+    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return '';
+    const [, mm, dd, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   const filteredIssues = useMemo(() => {
     let filtered = [...issues];
 
-    // Issue Present filter - default to "Issues Yes" only
+    // Issue Present filter - default to "Active Issues" only
     if (filters.issueFilter === 'yes') {
       filtered = filtered.filter(issue => 
         (issue.issue_present || '').toString().toLowerCase() === 'yes'
@@ -70,20 +88,6 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
     return filtered;
   }, [issues, filters, searchQuery]);
-
-  const stats = useMemo(() => {
-    const totalIssues = issues.length;
-    const missedIssues = issues.filter(issue => issue.issues_missed_by).length;
-    const issuesWithProblems = issues.filter(issue => issue.issue_present?.toLowerCase() === 'yes').length;
-    const issuesWithoutProblems = issues.filter(issue => issue.issue_present?.toLowerCase() === 'no').length;
-    
-    return {
-      totalIssues,
-      missedIssues,
-      issuesWithProblems,
-      issuesWithoutProblems
-    };
-  }, [issues]);
 
   // Filter issues based on analytics period
   const filteredIssuesForAnalytics = useMemo(() => {
@@ -171,7 +175,38 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
       });
 
       const activeHours = hourlyBreakdown.filter(h => h.count > 0).length;
-      const totalPortfoliosChecked = new Set(monitoredIssues.map(i => i.portfolio_name)).size;
+      // Count portfolio visits (not issues) - detect visits based on time gaps (>15 minutes = new visit)
+      const portfolioIssuesMap = {};
+      monitoredIssues.forEach(issue => {
+        const portfolioName = issue.portfolio_name;
+        if (portfolioName && portfolioName !== 'Unknown') {
+          if (!portfolioIssuesMap[portfolioName]) {
+            portfolioIssuesMap[portfolioName] = [];
+          }
+          const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+          portfolioIssuesMap[portfolioName].push(issueTime);
+        }
+      });
+
+      let totalVisits = 0;
+      // Count portfolio visits: each lock/unlock session = 1 visit
+      // Group issues logged within 5 seconds as same lock session (1 visit)
+      // Any gap > 5 seconds = new lock session = new visit
+      const SESSION_GAP_MS = 5000; // 5 seconds - issues within this window = same lock session
+      Object.keys(portfolioIssuesMap).forEach(portfolioName => {
+        const times = portfolioIssuesMap[portfolioName].sort((a, b) => a - b);
+        let visitCount = 0;
+        let lastIssueTime = null;
+        times.forEach(time => {
+          // If first issue or gap > 5 seconds, it's a new lock session = new visit
+          if (!lastIssueTime || (time - lastIssueTime) > SESSION_GAP_MS) {
+            visitCount++;
+          }
+          lastIssueTime = time;
+        });
+        totalVisits += visitCount;
+      });
+      const totalPortfoliosChecked = totalVisits; // Count portfolio visits based on time gaps
       const accuracyRate = monitoredIssues.length > 0 
         ? ((monitoredIssues.length - missedIssues.length) / monitoredIssues.length * 100).toFixed(1)
         : 0;
@@ -204,7 +239,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
       monitoredBy: '',
       startDate: '',
       endDate: '',
-      issueFilter: 'yes' // Reset to default: Issues Yes
+      issueFilter: 'yes' // Reset to default: Active Issues
     });
     setSearchQuery('');
   };
@@ -301,7 +336,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                   {user.performanceScore} Performance
                 </span>
                 <span className="text-xs text-gray-600">•</span>
-                <span className="text-xs text-gray-600">{user.activeHours} Active Hours</span>
+                <span className="text-xs text-gray-600">{user.activeHours} Monitoring Active Hours</span>
               </div>
             </div>
           </div>
@@ -365,7 +400,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                   {hourData.count > 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-white text-xs font-bold">
                       <div>{hourData.count}</div>
-                      {hourData.foundIssues > 0 && <div className="text-[10px] mt-0.5">🔴</div>}
+                      {hourData.foundIssues > 0 && <div className="text-[10px] mt-0.5 text-white/90">●</div>}
                     </div>
                   )}
                 </div>
@@ -391,7 +426,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
               <span className="text-gray-600">No Activity</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="text-red-500 font-bold">🔴</div>
+              <div className="w-3 h-3 rounded-full bg-red-500"></div>
               <span className="text-gray-600">Issues Found</span>
             </div>
           </div>
@@ -408,29 +443,6 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
         <p className="text-gray-100 text-sm mt-1">Track and analyze issues by monitoring personnel</p>
       </div>
 
-      {/* Stats Cards - Simple Numbers */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg p-5 shadow border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1 font-medium">Total Issues</div>
-          <div className="text-3xl font-bold text-gray-900">{stats.totalIssues}</div>
-        </div>
-
-        <div className="bg-white rounded-lg p-5 shadow border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1 font-medium">Missed Issues</div>
-          <div className="text-3xl font-bold text-red-600">{stats.missedIssues}</div>
-        </div>
-
-        <div className="bg-white rounded-lg p-5 shadow border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1 font-medium">With Problems</div>
-          <div className="text-3xl font-bold text-orange-600">{stats.issuesWithProblems}</div>
-        </div>
-
-        <div className="bg-white rounded-lg p-5 shadow border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1 font-medium">No Problems</div>
-          <div className="text-3xl font-bold text-green-600">{stats.issuesWithoutProblems}</div>
-        </div>
-      </div>
-
       {/* FIX 4: Hourly Performance Report Cards for All Users */}
       <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
@@ -444,10 +456,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border-2 border-blue-200 mb-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <label className="text-sm font-bold text-gray-700">📅 Period Filter</label>
+              <label className="text-sm font-bold text-gray-700">Period Filter</label>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -534,7 +543,6 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      min={customStartDate}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
@@ -601,9 +609,6 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             </div>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: '#E8F5E0' }}>
-            <svg className="w-5 h-5" style={{ color: '#76AB3F' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
             <span className="text-sm font-semibold" style={{ color: '#76AB3F' }}>
               {hasUserSearch ? filteredUsers.length : 0} Matching Users
             </span>
@@ -619,7 +624,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  const header = ['User', 'Total Monitored', 'Issues Found', 'Issues Missed', 'Active Hours', 'Performance Score', 'Portfolios Covered'];
+                  const header = ['User', 'Total Monitored', 'Active Issues', 'Missed Alerts', 'Monitoring Active Hours', 'Performance Score', 'Total Portfolios Monitored'];
                   const rows = filteredUsers.map(user => [
                     user.userName,
                     user.totalMonitored,
@@ -669,13 +674,8 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
       {/* Filter Section */}
       <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            Filter & Search Issues
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-gray-900">Filter & Search Issues</h3>
           {(filters.showMissedOnly || filters.missedBy || filters.monitoredBy || filters.startDate || filters.endDate || filters.issueFilter === 'all' || searchQuery) && (
             <span className="text-sm text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full">
               {filteredIssues.length} results found
@@ -687,11 +687,8 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
           {/* ENHANCED Global Search - More Prominent */}
           <div className="bg-gradient-to-r from-green-50 to-lime-50 p-4 rounded-lg border-2 border-green-200">
             <div className="flex items-center gap-2 mb-2">
-              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
               <label className="text-sm font-bold text-gray-700">
-                🔍 Quick Search
+                Quick Search
               </label>
             </div>
             <input
@@ -719,12 +716,9 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             )}
           </div>
 
-          {/* Issue Filter - Default to "Issues Yes" */}
+          {/* Issue Filter - Default to "Active Issues" */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-              <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
               Issue Filter
             </label>
             <select
@@ -732,7 +726,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
               onChange={(e) => handleFilterChange('issueFilter', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
-              <option value="yes">Issues Yes (Default)</option>
+              <option value="yes">Active Issues (Default)</option>
               <option value="all">All Issues</option>
             </select>
           </div>
@@ -748,17 +742,14 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
               style={{ accentColor: '#76AB3F' }}
             />
             <label htmlFor="showMissedOnly" className="ml-2 text-sm font-medium text-gray-700">
-              Show Missed Issues Only
+              Show Missed Alerts Only
             </label>
           </div>
 
           {/* User Filters */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Search by "Missed By" Name
               </label>
               <input
@@ -771,10 +762,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Search by "Monitored By" Name
               </label>
               <input
@@ -788,13 +776,10 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
           </div>
 
           {/* Date Filters with Quick Buttons */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              📅 Date Range Filter
-            </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Date Range Filter
+              </label>
             
             {/* Quick Date Range Buttons */}
             <div className="flex flex-wrap gap-2 mb-3">
@@ -866,6 +851,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                 <input
                   type="date"
                   value={filters.startDate}
+                  max={filters.endDate || undefined}
                   onChange={(e) => handleFilterChange('startDate', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
@@ -878,6 +864,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                 <input
                   type="date"
                   value={filters.endDate}
+                  min={filters.startDate || undefined}
                   onChange={(e) => handleFilterChange('endDate', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
@@ -886,11 +873,11 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             {(filters.startDate || filters.endDate) && (
               <div className="mt-2 text-xs text-gray-600">
                 {filters.startDate && filters.endDate ? (
-                  <span>Showing issues from <span className="font-bold">{filters.startDate}</span> to <span className="font-bold">{filters.endDate}</span></span>
+                  <span>Showing issues from <span className="font-bold">{formatDateDisplay(filters.startDate)}</span> to <span className="font-bold">{formatDateDisplay(filters.endDate)}</span></span>
                 ) : filters.startDate ? (
-                  <span>Showing issues from <span className="font-bold">{filters.startDate}</span> onwards</span>
+                  <span>Showing issues from <span className="font-bold">{formatDateDisplay(filters.startDate)}</span> onwards</span>
                 ) : (
-                  <span>Showing issues up to <span className="font-bold">{filters.endDate}</span></span>
+                  <span>Showing issues up to <span className="font-bold">{formatDateDisplay(filters.endDate)}</span></span>
                 )}
               </div>
             )}

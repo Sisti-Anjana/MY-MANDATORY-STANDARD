@@ -84,7 +84,7 @@ const Dashboard = () => {
               <div className="min-w-0">
                 <dl className="truncate">
                   <dt className="text-[10px] font-medium text-gray-500 truncate">
-                    Total Issues
+                    Total Alerts Generated
                   </dt>
                   <dd className="text-xs font-medium text-gray-900">
                     {stats?.total_issues || 0}

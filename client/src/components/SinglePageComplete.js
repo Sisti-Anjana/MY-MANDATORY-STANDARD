@@ -1819,10 +1819,10 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-full mx-auto px-4 md:px-6 py-4 grid grid-cols-[180px,1fr,auto] items-center gap-4">
+        <div className="max-w-full mx-auto px-4 md:px-6 py-4 grid grid-cols-[180px,1fr,360px] items-center gap-4">
           {/* Left: Logo (with fallback) */}
           <div className="flex items-center flex-shrink-0 h-12 w-[180px]">
-            {!logoMissing ? (
+            {!logoMissing && (
               <img
                 src="/logo.png"
                 alt="American Green Solutions"
@@ -1835,28 +1835,19 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                   }
                 }}
               />
-            ) : (
-              <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-lg shadow-inner">
-                AG
-              </div>
             )}
           </div>
 
           {/* Center: Titles perfectly centered */}
-          <div className="flex-1 text-center leading-tight">
-            <div className="text-2xl font-extrabold text-gray-900">Standard Solar</div>
-            <div className="text-sm font-medium text-gray-600">Portfolio Issue Tracker</div>
-            {/* Auto-refresh indicator - subtle and non-disruptive */}
-            {isAutoRefreshing && (
-              <div className="mt-1 inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                <span className="text-xs text-blue-700 font-medium">Refreshing...</span>
-              </div>
-            )}
+          <div className="flex items-center justify-center text-center leading-tight">
+            <div className="text-3xl font-extrabold text-gray-900 whitespace-nowrap tracking-tight">
+              Standard Solar
+              <div className="text-base font-medium text-gray-600 whitespace-nowrap">Issue Tracker</div>
+            </div>
           </div>
 
           {/* Right: User / actions */}
-          <div className="flex items-center gap-4 justify-end flex-shrink-0 flex-wrap md:flex-nowrap">
+          <div className="flex items-center gap-5 justify-end flex-shrink-0 flex-wrap md:flex-nowrap">
             {/* User Info */}
             <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex items-center gap-2">
@@ -1878,7 +1869,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             {isAdmin && (
               <button 
                 onClick={handleAdminButtonClick}
-                className="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800 text-sm font-medium transition-colors flex items-center gap-2"
+                className="px-5 py-2 bg-green-700 text-white rounded hover:bg-green-800 text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -1891,7 +1882,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             {/* Logout Button */}
             <button 
               onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-colors flex items-center gap-2"
+              className="px-5 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-colors flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

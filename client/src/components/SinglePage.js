@@ -186,18 +186,35 @@ const SinglePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-full mx-auto px-6 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Portfolio Issue Tracker</h1>
-            <p className="text-sm text-gray-600 mt-1">Complete issue tracking and analysis system</p>
+      {/* Header - aligned with main dashboard layout */}
+      <header className="bg-white shadow-sm border-b sticky top-0 z-20">
+        <div className="max-w-full mx-auto px-4 md:px-6 py-4 grid grid-cols-[180px,1fr,360px] items-center gap-4">
+          {/* Left: Logo */}
+          <div className="flex items-center flex-shrink-0 h-12 w-[180px]">
+            <img
+              src="/logo.png"
+              alt="American Green Solutions"
+              className="h-12 w-auto max-w-[170px] object-contain"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
-          <div className="flex items-center gap-4">
-            <button className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm">
+
+          {/* Center: Titles (consistent, non-overlapping) */}
+          <div className="flex items-center justify-center text-center leading-tight">
+            <div className="text-3xl font-extrabold text-gray-900 whitespace-nowrap tracking-tight">
+              Standard Solar
+              <div className="text-base font-medium text-gray-600 whitespace-nowrap">Issue Tracker</div>
+            </div>
+          </div>
+
+          {/* Right: Actions */}
+          <div className="flex items-center gap-5 justify-end flex-shrink-0 flex-wrap md:flex-nowrap">
+            <button className="px-5 py-2 bg-gray-800 text-white rounded hover:bg-gray-900 text-sm font-medium flex items-center gap-2 whitespace-nowrap">
               Admin Panel
             </button>
-            <div className="text-center">
+            <div className="text-center px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
               <div className="text-xs text-gray-600">Current Hour</div>
               <div className="text-2xl font-bold text-blue-600">{currentHour}</div>
             </div>

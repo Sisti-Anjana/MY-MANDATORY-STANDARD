@@ -1,12 +1,47 @@
 import React, { useMemo, useState, useEffect } from 'react';
 
-const formatDate = (date) => {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return '';
+// Parse flexible dates (accepts ISO and MMDDYYYY)
+const parseFlexibleDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+  const str = String(value).trim();
+  const mmddyyyyMatch = str.match(/^(\d{2})(\d{2})(\d{4})$/);
+  if (mmddyyyyMatch) {
+    const [, mm, dd, yyyy] = mmddyyyyMatch;
+    const parsed = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
   }
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  return null;
+};
+
+// Format date for display as MMDDYYYY
+const formatDateDisplay = (date) => {
+  const d = parseFlexibleDate(date);
+  if (!d) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${month}${day}${year}`;
+};
+
+// Convert display input (MMDDYYYY) to ISO YYYY-MM-DD
+const inputToISO = (val) => {
+  if (!val) return '';
+  const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+  if (!m) return '';
+  const [, mm, dd, yyyy] = m;
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Format date for internal use (YYYY-MM-DD) - used for date inputs and comparisons
+const formatDate = (date) => {
+  const d = parseFlexibleDate(date);
+  if (!d) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
 
@@ -66,7 +101,7 @@ const IssueDetailsView = ({
   );
   const [activeRange, setActiveRange] = useState('today');
   const [searchQuery, setSearchQuery] = useState('');
-  const [issueFilter, setIssueFilter] = useState('yes'); // 'yes' = Issues Yes (default), 'all' = All Issues
+  const [issueFilter, setIssueFilter] = useState('yes'); // 'yes' = Active Issues (default), 'all' = All Issues
   const clearSearch = () => {
     setSearchQuery('');
   };
@@ -108,7 +143,7 @@ const IssueDetailsView = ({
     const searchLower = searchQuery.toLowerCase();
 
     return issues.filter(issue => {
-      // Issue Present filter - default to "Issues Yes" only
+      // Issue Present filter - default to "Active Issues" only
       if (issueFilter === 'yes') {
         if ((issue.issue_present || '').toString().toLowerCase() !== 'yes') {
           return false;
@@ -151,8 +186,8 @@ const IssueDetailsView = ({
       }
 
       if (!issue.created_at) return false;
-      const createdDate = new Date(issue.created_at);
-      if (Number.isNaN(createdDate.getTime())) return false;
+      const createdDate = parseFlexibleDate(issue.created_at);
+      if (!createdDate) return false;
       const issueDateString = formatDate(createdDate);
 
       return issueDateString >= startDate && issueDateString <= endDate;
@@ -161,8 +196,8 @@ const IssueDetailsView = ({
 
   const sortedIssues = useMemo(() => {
     return [...filteredIssues].sort((a, b) => {
-      const dateA = new Date(a.created_at).getTime();
-      const dateB = new Date(b.created_at).getTime();
+      const dateA = parseFlexibleDate(a.created_at)?.getTime() || 0;
+      const dateB = parseFlexibleDate(b.created_at)?.getTime() || 0;
       return dateB - dateA;
     });
   }, [filteredIssues]);
@@ -244,7 +279,7 @@ const IssueDetailsView = ({
               onChange={(e) => setIssueFilter(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
-              <option value="yes">Issues Yes (Default)</option>
+              <option value="yes">Active Issues (Default)</option>
               <option value="all">All Issues</option>
             </select>
           </div>
@@ -350,7 +385,7 @@ const IssueDetailsView = ({
               )}
               {sortedIssues.map(issue => {
                 const dateString = issue.created_at
-                  ? new Date(issue.created_at).toLocaleString()
+                  ? formatDateDisplay(issue.created_at)
                   : 'N/A';
                 const issuePresent = (issue.issue_present || '').toLowerCase() === 'yes';
 

@@ -8,7 +8,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     searchText: '',
     dateFilter: getTodayString(),
     hourFilter: '',
-    issueFilter: 'yes' // 'yes' = Issues Yes (default), 'all' = All Issues
+    issueFilter: 'yes' // 'yes' = Active Issues (default), 'all' = All Issues
   });
 
   // Separate export date range filters for CSV downloads
@@ -16,6 +16,24 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     fromDate: getTodayString(),
     toDate: getTodayString()
   });
+
+  // Date helpers: display mmddyyyy, store ISO
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}${dd}${yyyy}`;
+  };
+  const inputToISO = (val) => {
+    if (!val) return '';
+    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return '';
+    const [, mm, dd, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
   const [formData, setFormData] = useState({
     portfolio_id: '',
@@ -629,7 +647,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       searchText: '',
       dateFilter: getTodayString(),
       hourFilter: '',
-      issueFilter: 'yes' // Reset to default: Issues Yes
+      issueFilter: 'yes' // Reset to default: Active Issues
     });
   };
 
@@ -946,7 +964,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
   const filteredIssues = issues.filter(issue => {
     let match = true;
 
-    // Issue Present filter - default to "Issues Yes" only
+    // Issue Present filter - default to "Active Issues" only
     if (filters.issueFilter === 'yes') {
       match = match && (issue.issue_present || '').toString().toLowerCase() === 'yes';
     }
@@ -1059,7 +1077,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
               onChange={(e) => handleFilterChange('issueFilter', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
             >
-              <option value="yes">Issues Yes (Default)</option>
+              <option value="yes">Active Issues (Default)</option>
               <option value="all">All Issues</option>
             </select>
           </div>
@@ -1147,12 +1165,12 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           <button
             onClick={handleExportIssuesWithYes}
             className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2 shadow-sm"
-            title="Export only issues with Issue Present = Yes in the selected date range"
+            title="Export only Active Issues (issues with Issue Present = Yes) in the selected date range"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export Issues (Yes Only)
+            Export Active Issues
           </button>
         </div>
       </div>
@@ -1169,7 +1187,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">CASE #</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">MONITORED BY</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">DATE/TIME</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ISSUES MISSED BY</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">MISSED ALERTS BY</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">ACTIONS</th>
             </tr>
           </thead>

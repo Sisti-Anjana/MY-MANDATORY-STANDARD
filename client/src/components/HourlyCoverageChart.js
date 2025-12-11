@@ -5,6 +5,22 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
   const [dateRange, setDateRange] = useState('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}${dd}${yyyy}`;
+  };
+  const inputToISO = (val) => {
+    if (!val) return '';
+    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return '';
+    const [, mm, dd, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
   const chartData = useMemo(() => {
     // Filter issues based on date range
@@ -70,7 +86,7 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
           <p className="font-semibold">{data.hour}</p>
           <p className="text-green-600">Coverage: {data.coverage}%</p>
           <p className="text-sm text-gray-600">Portfolios: {data.portfoliosChecked}/{totalPortfolios}</p>
-          <p className="text-sm text-gray-600">Total Issues: {data.totalIssues}</p>
+          <p className="text-sm text-gray-600">Total Alerts Generated: {data.totalIssues}</p>
         </div>
       );
     }

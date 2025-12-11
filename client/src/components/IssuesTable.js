@@ -195,8 +195,7 @@ const IssuesTable = () => {
               Date Filter
             </label>
             <input
-              type="text"
-              placeholder="dd-mm-yyyy"
+              type="date"
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>

@@ -84,7 +84,7 @@ const CoverageChart = () => {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
-                    Total Portfolios
+                    Total Portfolios Monitored
                   </dt>
                   <dd className="text-lg font-medium text-gray-900">
                     {coverageData?.total_portfolios || 0}

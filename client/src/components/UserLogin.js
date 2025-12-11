@@ -93,121 +93,133 @@ const UserLogin = ({ onLoginSuccess, onSwitchToAdmin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #76AB3F 0%, #5a8230 50%, #3d5620 100%)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ border: '2px solid #76AB3F' }}>
-        {/* Header */}
-        <div className="p-8" style={{ background: 'linear-gradient(to right, #76AB3F 0%, #5a8230 100%)' }}>
-          <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg">
-              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#76AB3F' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-          </div>
-          <h2 className="text-3xl font-bold text-white text-center">User Login</h2>
-          <p className="text-sm text-center mt-2" style={{ color: 'rgba(255, 255, 255, 0.9)' }}>Portfolio Issue Tracker System</p>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded flex items-start gap-3">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="text-sm">{error}</span>
-            </div>
-          )}
-
-          {/* Username Field */}
-          <div>
-            <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
-              Username
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 text-sm transition-all"
-                placeholder="Enter your username"
-                required
-                disabled={isLoading}
+    <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+      <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-2">
+          {/* Left panel (branding) */}
+          <div className="relative p-8 flex flex-col justify-center bg-white">
+            <div className="flex flex-col items-center gap-6">
+              <img
+                src="/login.png"
+                alt="Brand Logo"
+                className="h-56 w-auto object-contain"
+                onError={(e) => (e.currentTarget.style.display = 'none')}
               />
-            </div>
-          </div>
-
-          {/* Password Field */}
-          <div>
-            <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-              Password
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
+              <div className="text-center space-y-1">
+                <h2 className="text-4xl font-extrabold text-gray-900 tracking-tight">Welcome</h2>
+                <p className="text-sm text-gray-500">Please sign in to continue</p>
               </div>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 text-sm transition-all"
-                placeholder="Enter your password"
-                required
-                disabled={isLoading}
-              />
             </div>
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full text-white py-3 px-4 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
-            style={{ 
-              background: 'linear-gradient(to right, #76AB3F 0%, #5a8230 100%)',
-              focusRing: '#76AB3F'
+          {/* Right panel (form) */}
+          <div
+            className="p-8 md:p-10 bg-white text-white"
+            style={{
+              background: 'linear-gradient(135deg, #76AB3F 0%, #5a8f2f 50%, #3d6d1f 100%)'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'linear-gradient(to right, #5a8230 0%, #3d5620 100%)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'linear-gradient(to right, #76AB3F 0%, #5a8230 100%)'}
           >
-            {isLoading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Signing In...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                </svg>
-                <span>Sign In</span>
-              </>
-            )}
-          </button>
+            <div className="text-center mb-8 space-y-1">
+              <h2 className="text-2xl font-extrabold text-white">User Login</h2>
+              <p className="text-sm text-emerald-50">Access your portfolio dashboard</p>
+            </div>
 
-          {/* Admin Link */}
-          <div className="text-center pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onSwitchToAdmin}
-              className="text-sm text-gray-600 font-medium transition-colors"
-              onMouseEnter={(e) => e.currentTarget.style.color = '#76AB3F'}
-              onMouseLeave={(e) => e.currentTarget.style.color = '#4b5563'}
-            >
-              Are you an admin? <span style={{ color: '#76AB3F' }}>Click here</span>
-            </button>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-3">
+                  <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm">{error}</span>
+                </div>
+              )}
+
+              {/* Username Field */}
+              <div className="space-y-2">
+                <label htmlFor="username" className="block text-sm font-semibold text-gray-800">
+                  Username
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="block w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 text-sm transition-all shadow-sm"
+                    placeholder="Type your username"
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="block text-sm font-semibold text-gray-800">
+                    Password
+                  </label>
+                  <span className="text-xs text-emerald-600 font-semibold cursor-pointer">Forgot password?</span>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 text-sm transition-all shadow-sm"
+                    placeholder="Type your password"
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full text-white py-3 px-4 rounded-xl font-semibold focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl bg-gradient-to-r from-emerald-600 to-emerald-500"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white/80 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Signing In...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                    </svg>
+                    <span>Sign In</span>
+                  </>
+                )}
+              </button>
+
+              {/* Admin Link */}
+              <div className="text-center pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={onSwitchToAdmin}
+                  className="text-sm text-white font-semibold transition-colors hover:text-emerald-100"
+                >
+                  Are you an admin? <span className="text-white">Click here</span>
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

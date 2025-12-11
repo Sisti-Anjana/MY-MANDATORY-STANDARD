@@ -99,7 +99,7 @@ const PortfolioHeatMap = ({ coverageData, totalPortfolios }) => {
           <div className="text-sm font-bold text-gray-900">
             {coverageData ? coverageData.filter(h => h.coverage_percentage > 0).length : 0}
           </div>
-          <div className="text-[10px] text-gray-600">Active Hours</div>
+          <div className="text-[10px] text-gray-600">Monitoring Active Hours</div>
         </div>
         <div className="text-center">
           <div className="text-sm font-bold text-gray-900">
