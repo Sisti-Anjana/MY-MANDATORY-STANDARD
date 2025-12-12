@@ -32,7 +32,17 @@ app.use((req, res, next) => {
 
 // Cleanup expired reservations (run every minute)
 setInterval(() => {
-  db.run('DELETE FROM hour_reservations WHERE expires_at < datetime("now")');
+  const promise = db.run('DELETE FROM hour_reservations WHERE expires_at < datetime("now")', [], (err) => {
+    if (err) {
+      console.error('Error cleaning up expired reservations:', err);
+    }
+  });
+  // Handle promise rejection if db.run returns a promise
+  if (promise && typeof promise.catch === 'function') {
+    promise.catch((err) => {
+      console.error('Error cleaning up expired reservations (promise rejection):', err);
+    });
+  }
 }, 60000);
 
 // Routes
@@ -627,6 +637,18 @@ app.delete('/api/reservations/:id', (req, res) => {
       res.json({ message: 'Reservation released' });
     }
   );
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit the process, just log the error
 });
 
 // Export app for serverless deployment (Vercel)

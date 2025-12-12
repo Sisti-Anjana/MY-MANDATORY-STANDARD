@@ -62,13 +62,12 @@ if (USE_SUPABASE) {
         if (callback && typeof callback === 'function') {
           callback.call(mockThis, null);
         }
+        return Promise.resolve(mockThis);
       } catch (error) {
         if (callback && typeof callback === 'function') {
           callback.call({ changes: 0 }, error);
-        } else {
-          // If no callback, throw the error so it can be caught by caller
-          throw error;
         }
+        return Promise.reject(error);
       }
     }
   };
