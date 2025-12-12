@@ -750,7 +750,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search by "Missed By" Name
+                Search By "Missed By" Name
               </label>
               <input
                 type="text"
@@ -763,7 +763,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search by "Monitored By" Name
+                Search By "Monitored By" Name
               </label>
               <input
                 type="text"
@@ -889,7 +889,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
               onClick={handleClearFilters}
               className="px-4 py-2 bg-gray-600 text-white rounded text-sm font-medium hover:bg-gray-700 transition-colors"
             >
-              Clear Filters
+              Clear filters
             </button>
             <button
               onClick={handleExportToCSV}
@@ -912,25 +912,25 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-[#76AB3F]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Date & Time
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Portfolio
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Missed By
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Monitored By
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Details
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-white uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-bold text-white tracking-wider">
                   Actions
                 </th>
               </tr>

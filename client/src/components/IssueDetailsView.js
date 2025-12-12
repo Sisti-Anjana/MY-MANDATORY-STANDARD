@@ -251,7 +251,7 @@ const IssueDetailsView = ({
         </div>
         <div className="grid grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">
               Select Portfolio
             </label>
             <select
@@ -271,7 +271,7 @@ const IssueDetailsView = ({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">
               Issue Filter
             </label>
             <select
@@ -284,7 +284,7 @@ const IssueDetailsView = ({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">
               Hour Filter
             </label>
             <select
@@ -301,7 +301,7 @@ const IssueDetailsView = ({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">
               Quick Range
             </label>
             <div className="flex gap-2">
@@ -325,7 +325,7 @@ const IssueDetailsView = ({
 
         <div className="grid grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">
               Start Date
             </label>
             <input
@@ -337,7 +337,7 @@ const IssueDetailsView = ({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">
               End Date
             </label>
             <input
@@ -366,13 +366,13 @@ const IssueDetailsView = ({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Portfolio</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Hour</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Issue</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Details</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Monitored By</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Portfolio</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Hour</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Issue</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Details</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Monitored By</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">

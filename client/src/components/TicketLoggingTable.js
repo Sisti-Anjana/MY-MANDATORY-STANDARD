@@ -753,132 +753,8 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       return;
     }
 
-    // VALIDATION STEP 1.5: Check if user has active lock on this portfolio/hour
-    // CRITICAL: Only the person who locked the portfolio can add issues
-    // Must check BOTH session_id AND monitored_by to ensure it's truly YOUR lock
-    const sessionId = ensureSessionId();
-    const nowIso = new Date().toISOString();
+    // Removed lock validation - issues can now be saved regardless of lock status
     const parsedHour = parseInt(formData.issue_hour, 10);
-    const currentUser = loggedInUser;
-    
-    // Check if myReservation exists and matches the current portfolio/hour
-    const hasValidLock = myReservation && 
-      myReservation.portfolio_id === formData.portfolio_id && 
-      myReservation.issue_hour === parsedHour &&
-      String(myReservation.session_id || '').trim() === String(sessionId || '').trim() &&
-      String(myReservation.monitored_by || '').trim() === String(currentUser || '').trim();
-    
-    if (!hasValidLock) {
-      // Check if there's an active reservation for this portfolio/hour by THIS user
-      // CRITICAL: Must match BOTH session_id AND monitored_by
-      const { data: activeReservations, error: reservationCheckError } = await supabase
-        .from('hour_reservations')
-        .select('*')
-        .eq('portfolio_id', formData.portfolio_id)
-        .eq('issue_hour', parsedHour)
-        .eq('session_id', sessionId)
-        .gt('expires_at', nowIso);
-      
-      if (reservationCheckError) {
-          alert('❌ ERROR: Unable to verify portfolio lock. Please try again.');
-          return;
-      }
-      
-      // Filter to ensure BOTH session_id AND monitored_by match
-      // CRITICAL: Use case-insensitive comparison for monitored_by
-      const myActiveReservations = (activeReservations || []).filter(r => {
-        const rSessionId = String(r.session_id || '').trim();
-        const rMonitoredBy = String(r.monitored_by || '').trim();
-        const mySessionIdStr = String(sessionId || '').trim();
-        const myUserStr = String(currentUser || '').trim();
-        const sessionMatches = rSessionId === mySessionIdStr;
-        const userMatches = rMonitoredBy.toLowerCase() === myUserStr.toLowerCase();
-        return sessionMatches && userMatches;
-      });
-      
-      const activeReservation = myActiveReservations.length > 0 
-        ? myActiveReservations[0] 
-        : null;
-      
-      if (!activeReservation) {
-        // Check if someone else has it locked
-        const { data: otherReservations } = await supabase
-          .from('hour_reservations')
-          .select('*')
-          .eq('portfolio_id', formData.portfolio_id)
-          .eq('issue_hour', parsedHour)
-          .gt('expires_at', nowIso);
-        
-        if (otherReservations && otherReservations.length > 0) {
-          const otherLock = otherReservations[0];
-          const portfolioName = getPortfolioNameById(formData.portfolio_id);
-          const lockedBy = String(otherLock.monitored_by || 'another user').trim();
-          const errorMsg = `❌ ERROR: This portfolio "${portfolioName}" (Hour ${parsedHour}) is locked by "${lockedBy}".\n\nOnly the person who locked it can add issues.`;
-          console.error('❌ BLOCKED: Portfolio is locked by someone else', {
-            lockedBy,
-            myUser: currentUser,
-            portfolioName,
-            hour: parsedHour
-          });
-          alert(errorMsg);
-          setSubmitError(errorMsg);
-        } else {
-          // No lock found - try to create one automatically if all fields are filled
-          if (formData.portfolio_id && formData.issue_hour && formData.monitored_by) {
-            console.log('⚠️ No lock found, but all fields are filled. Attempting to create lock automatically...');
-            
-            // Try to create the lock automatically
-            try {
-              const expiresAt = new Date();
-              expiresAt.setHours(expiresAt.getHours() + 1); // Expires in 1 hour
-              
-              const { data: newReservation, error: createError } = await supabase
-                .from('hour_reservations')
-                .insert([{
-                  portfolio_id: formData.portfolio_id,
-                  issue_hour: parsedHour,
-                  monitored_by: formData.monitored_by,
-                  session_id: sessionId,
-                  expires_at: expiresAt.toISOString()
-                }])
-                .select()
-                .single();
-              
-              if (createError) {
-                console.error('Error creating lock automatically:', createError);
-                const errorMsg = '❌ ERROR: Unable to create lock automatically. Please ensure portfolio, hour, and monitored by are selected, then try again.';
-                alert(errorMsg);
-                setSubmitError(errorMsg);
-                return;
-              }
-              
-              console.log('✅ Lock created automatically:', newReservation);
-              setMyReservation(newReservation);
-              // Continue with issue submission below
-            } catch (createErr) {
-              console.error('Error creating lock:', createErr);
-              const errorMsg = '❌ ERROR: Unable to create lock. Please try again.';
-              alert(errorMsg);
-              setSubmitError(errorMsg);
-              return;
-            }
-          } else {
-            const errorMsg = '❌ ERROR: You must lock this portfolio first before logging issues.\n\nPlease select the portfolio, hour, and monitored by person to create a lock, then you can log issues.';
-            console.warn('⚠️ No lock found - requiring lock first', {
-              hasPortfolio: !!formData.portfolio_id,
-              hasHour: !!formData.issue_hour,
-              hasMonitoredBy: !!formData.monitored_by
-            });
-            alert(errorMsg);
-            setSubmitError(errorMsg);
-            return; // CRITICAL: Stop execution here
-          }
-        }
-      }
-      
-      // Update myReservation to match the active reservation
-      setMyReservation(activeReservation);
-    }
 
     // VALIDATION STEP 2: Issue Present (CRITICAL!)
     const issuePresent = String(formData.issue_present).trim();
@@ -1047,7 +923,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       <div className="p-4 border-b bg-gray-50">
         <div className="grid grid-cols-4 gap-4 items-end">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Date Filter</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">Date Filter</label>
             <input
               type="date"
               value={filters.dateFilter}
@@ -1057,7 +933,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Hour Filter</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">Hour Filter</label>
             <select
               value={filters.hourFilter}
               onChange={(e) => handleFilterChange('hourFilter', e.target.value)}
@@ -1071,7 +947,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Issue Filter</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5 tracking-wide">Issue Filter</label>
             <select
               value={filters.issueFilter}
               onChange={(e) => handleFilterChange('issueFilter', e.target.value)}

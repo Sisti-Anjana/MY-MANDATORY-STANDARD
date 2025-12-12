@@ -317,7 +317,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Range</span>
+        <span className="text-xs font-semibold text-gray-500 tracking-wide">Range</span>
         <div className="flex gap-2 flex-wrap">
           {RANGE_OPTIONS.map(option => (
             <button
@@ -341,7 +341,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
       {range === 'custom' && (
         <div className="flex flex-wrap items-center gap-3 bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
           <div className="flex flex-col max-w-[180px]">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Start Date</label>
+            <label className="text-xs font-semibold text-gray-600 tracking-wide mb-1">Start Date</label>
             <input
               type="date"
               value={customStart}
@@ -350,7 +350,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
             />
           </div>
           <div className="flex flex-col max-w-[180px]">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">End Date</label>
+            <label className="text-xs font-semibold text-gray-600 tracking-wide mb-1">End Date</label>
             <input
               type="date"
               value={customEnd}
@@ -423,7 +423,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
         <CompactPanel title="Activity Snapshot" description="What’s been logged so far" iconBg="bg-blue-200">
           <dl className="space-y-2 text-sm text-gray-600">
             <div className="flex justify-between">
-              <dt>Total Alerts Generated</dt>
+              <dt>Total Count</dt>
               <dd className="font-semibold text-gray-900">{analytics.totalIssuesLogged}</dd>
             </div>
             <div className="flex justify-between">
@@ -516,7 +516,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
                 </div>
                 <button
                   onClick={() => {
-                    const header = ['User', 'Total Alerts Generated', 'Total Portfolios Monitored', 'Monitoring Active Hours', 'Missed Alerts'];
+                    const header = ['User', 'Total Count', 'Total Portfolios Monitored', 'Monitoring Active Hours', 'Missed Alerts'];
                     const rows = analytics.perUserStats.map(u => [
                       u.user,
                       u.issues,
@@ -553,11 +553,11 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
               <table className="min-w-full">
                 <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">User</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Total Alerts Generated</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Total Portfolios Monitored</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Monitoring Active Hours</th>
-                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider border-b border-gray-200">Missed Alerts</th>
+                    <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 tracking-wider border-b border-gray-200">User</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 tracking-wider border-b border-gray-200">Total Count</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 tracking-wider border-b border-gray-200">Total Portfolios Monitored</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 tracking-wider border-b border-gray-200">Monitoring Active Hours</th>
+                    <th className="px-6 py-4 text-right text-xs font-bold text-gray-700 tracking-wider border-b border-gray-200">Missed Alerts</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
@@ -659,7 +659,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
               <div className="bg-white border border-gray-200 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-1 h-4 rounded" style={{ backgroundColor: '#76AB3F' }}></div>
-                  <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Category Information</h5>
+                  <h5 className="text-xs font-bold text-gray-500 tracking-wide">Category Information</h5>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center py-1 border-b border-gray-100">
@@ -690,11 +690,11 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-1 h-4 rounded" style={{ backgroundColor: '#76AB3F' }}></div>
-                    <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Complete Performance Metrics</h5>
+                    <h5 className="text-xs font-bold text-gray-500 tracking-wide">Complete Performance Metrics</h5>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
-                      <p className="text-xs font-semibold text-blue-700 mb-1">Total Alerts Generated</p>
+                      <p className="text-xs font-semibold text-blue-700 mb-1">Total Count</p>
                       <p className="text-lg font-bold text-blue-900">{selectedPerformer.fullStats.issues || 0}</p>
                     </div>
                     <div className="bg-red-50 border border-red-200 rounded-lg p-2.5">
@@ -742,7 +742,7 @@ export default PerformanceAnalytics;
 
 const MetricCard = ({ label, value, helper, accent, highlight }) => (
   <div className={`border border-gray-200 rounded-lg p-2 shadow-sm w-full ${highlight || 'bg-white'}`}>
-    <div className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">{label}</div>
+    <div className="text-[10px] font-semibold text-gray-600 tracking-wide">{label}</div>
     <div className={`mt-0.5 text-lg font-bold text-gray-900 ${accent || ''}`}>{value}</div>
     {helper && <div className="text-[10px] text-gray-600 mt-0.5">Total {helper}</div>}
   </div>
@@ -790,7 +790,7 @@ const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', 
 
   return (
     <div>
-      <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">{label}</h4>
+      <h4 className="text-xs font-semibold text-gray-600 tracking-wide mb-3">{label}</h4>
       {items && items.length > 0 ? (
         <div className="space-y-2">
           {items.map((item, idx) => {

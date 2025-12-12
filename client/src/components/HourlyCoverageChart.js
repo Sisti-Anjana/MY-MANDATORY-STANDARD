@@ -86,7 +86,7 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
           <p className="font-semibold">{data.hour}</p>
           <p className="text-green-600">Coverage: {data.coverage}%</p>
           <p className="text-sm text-gray-600">Portfolios: {data.portfoliosChecked}/{totalPortfolios}</p>
-          <p className="text-sm text-gray-600">Total Alerts Generated: {data.totalIssues}</p>
+          <p className="text-sm text-gray-600">Total Count: {data.totalIssues}</p>
         </div>
       );
     }

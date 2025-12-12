@@ -115,106 +115,7 @@ const PortfolioHourSessionDrawer = ({
       return;
     }
 
-    // CRITICAL VALIDATION: Only the person who locked the portfolio can add issues
-    // Must check BOTH session_id AND monitored_by to ensure it's truly YOUR lock
-    const sessionId = localStorage.getItem('session_id') || `session-${Date.now()}`;
-    const nowIso = new Date().toISOString();
-    const currentUser = String(loggedInUser || '').trim();
-
-    console.log('🔒 VALIDATING LOCK BEFORE ADDING ISSUE:', {
-      portfolioName,
-      portfolioId,
-      hour,
-      mySessionId: sessionId,
-      myUser: currentUser
-    });
-
-    // Check if there's an active reservation for this portfolio/hour
-    const { data: activeReservations, error: reservationCheckError } = await supabase
-      .from('hour_reservations')
-      .select('*')
-      .eq('portfolio_id', portfolioId)
-      .eq('issue_hour', hour)
-      .gt('expires_at', nowIso);
-
-    if (reservationCheckError) {
-      console.error('❌ Error checking reservation:', reservationCheckError);
-      setError('Unable to verify portfolio lock. Please try again.');
-      return;
-    }
-
-    console.log('📋 Found active reservations:', activeReservations?.length || 0);
-    if (activeReservations && activeReservations.length > 0) {
-      activeReservations.forEach((r, idx) => {
-        console.log(`  Reservation ${idx + 1}:`, {
-          session_id: r.session_id,
-          monitored_by: r.monitored_by,
-          portfolio_id: r.portfolio_id,
-          hour: r.issue_hour
-        });
-      });
-    }
-
-    // Filter to ensure BOTH session_id AND monitored_by match the current user
-    // CRITICAL: Use case-insensitive comparison for monitored_by
-    const myActiveReservations = (activeReservations || []).filter(r => {
-      const rSessionId = String(r.session_id || '').trim();
-      const rMonitoredBy = String(r.monitored_by || '').trim();
-      const mySessionIdStr = String(sessionId || '').trim();
-      const myUserStr = String(currentUser || '').trim();
-      
-      const sessionMatches = rSessionId === mySessionIdStr;
-      const userMatches = rMonitoredBy.toLowerCase() === myUserStr.toLowerCase();
-      const isMyLock = sessionMatches && userMatches;
-      
-      console.log('🔍 Checking reservation:', {
-        reservationSessionId: rSessionId,
-        mySessionId: mySessionIdStr,
-        sessionMatches,
-        reservationMonitoredBy: rMonitoredBy,
-        reservationMonitoredByLower: rMonitoredBy.toLowerCase(),
-        myUser: currentUser,
-        myUserLower: myUserStr.toLowerCase(),
-        userMatches,
-        isMyLock
-      });
-      
-      return isMyLock;
-    });
-
-    const activeReservation = myActiveReservations.length > 0 
-      ? myActiveReservations[0] 
-      : null;
-
-    if (!activeReservation) {
-      // Check if someone else has it locked
-      if (activeReservations && activeReservations.length > 0) {
-        const otherLock = activeReservations[0];
-        const lockedBy = String(otherLock.monitored_by || 'another user').trim();
-        console.error('❌ BLOCKED: Portfolio is locked by someone else', {
-          lockedBy,
-          myUser: currentUser,
-          portfolioName,
-          hour
-        });
-        const errorMsg = `❌ ERROR: This portfolio "${portfolioName}" (Hour ${hour}) is locked by "${lockedBy}". Only the person who locked it can add issues.`;
-        setError(errorMsg);
-        alert(errorMsg); // Also show alert to make it more visible
-        return; // CRITICAL: Stop execution here
-      } else {
-        console.warn('⚠️ No lock found - requiring lock first');
-        const errorMsg = 'You must lock this portfolio first before logging issues. Please select the portfolio, hour, and monitored by person to create a lock, then you can log issues.';
-        setError(errorMsg);
-        alert(errorMsg); // Also show alert to make it more visible
-        return; // CRITICAL: Stop execution here
-      }
-    }
-
-    console.log('✅ Lock validated - user has valid lock:', {
-      sessionId: activeReservation.session_id,
-      monitoredBy: activeReservation.monitored_by
-    });
-
+    // Removed lock validation - issues can now be saved regardless of lock status
     setSaving(true);
     setError(null);
 
@@ -291,12 +192,11 @@ const PortfolioHourSessionDrawer = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-50 flex pointer-events-none">
       <div
-        className="flex-1 bg-black bg-opacity-40"
-        onClick={closeDrawer}
+        className="flex-1 bg-transparent pointer-events-none"
       />
-      <div className="w-full max-w-xl h-full bg-white shadow-2xl border-l border-gray-200 flex flex-col">
+      <div className="w-full max-w-xl h-full bg-white shadow-2xl border-l border-gray-200 flex flex-col pointer-events-auto overflow-y-auto">
         <div className="px-5 py-4 border-b flex items-center justify-between bg-gray-50">
           <div>
             <div className="text-xs font-semibold text-gray-500 uppercase">

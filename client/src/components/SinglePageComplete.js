@@ -40,6 +40,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [portfolioSearchTerm, setPortfolioSearchTerm] = useState(''); // Search term for filtering portfolios
   const [isPortfolioLockedByOther, setIsPortfolioLockedByOther] = useState(false); // Track if portfolio is locked by someone else
   const [portfolioLockedBy, setPortfolioLockedBy] = useState(null); // Track who locked the portfolio
+  const [hoveredPortfolio, setHoveredPortfolio] = useState(null); // Track which portfolio is being hovered for tooltip
+  const [tooltipPosition, setTooltipPosition] = useState(null); // Track tooltip position
 
   const ensureSessionId = () => {
     let sessionId = localStorage.getItem('session_id');
@@ -705,6 +707,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
       // CRITICAL VALIDATION: Only the person who locked the portfolio can mark "All Sites Checked" = Yes
+      // BUT: Anyone can enter/update the text when "No" is selected (no lock required)
       if (value) {
         const sessionId = ensureSessionId();
         const nowIso = new Date().toISOString();
@@ -773,6 +776,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           monitoredBy: myActiveReservations[0].monitored_by
         });
       }
+      // Note: When value is false (No selected), we allow saving text without lock requirement
+      // This allows any user to enter/update the sites checked details text
 
       if (value) {
         // Check if there are issues for the hour we're about to mark as checked
@@ -1537,15 +1542,9 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   };
 
   const handleLogIssue = async () => {
-    // CRITICAL: Check state first - if button is disabled, don't proceed
-    if (isPortfolioLockedByOther) {
-      alert(`❌ ERROR: This portfolio "${selectedPortfolioForAction}" (Hour ${currentHour}) is locked by "${portfolioLockedBy}".\n\nOnly the person who locked it can log issues.`);
-      return; // Block immediately
-    }
-
+    // Removed lock validation - issues can now be saved regardless of lock status
     setShowActionModal(false);
 
-    // CRITICAL VALIDATION: Double-check if portfolio is locked by someone else before opening drawer
     const portfolioToSelect = portfolios.find(
       (p) => p.name === selectedPortfolioForAction
     );
@@ -1559,54 +1558,6 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     if (!portfolioId) {
       alert('❌ ERROR: Portfolio ID not found.');
       return;
-    }
-
-    // Check if portfolio is locked by someone else
-    const sessionId = ensureSessionId();
-    const nowIso = new Date().toISOString();
-    const loggedInUser = sessionStorage.getItem('username') || 
-                        sessionStorage.getItem('fullName') || 
-                        '';
-    const currentUser = String(loggedInUser || '').trim();
-
-    const { data: activeReservations, error: reservationCheckError } = await supabase
-      .from('hour_reservations')
-      .select('*')
-      .eq('portfolio_id', portfolioId)
-      .eq('issue_hour', currentHour)
-      .gt('expires_at', nowIso);
-
-    if (reservationCheckError) {
-      console.error('Error checking reservation:', reservationCheckError);
-      alert('❌ ERROR: Unable to verify portfolio lock. Please try again.');
-      return;
-    }
-
-    // Check if someone else has it locked
-    if (activeReservations && activeReservations.length > 0) {
-      // Filter to see if it's MY lock by comparing monitored_by name (case-insensitive)
-      const myActiveReservations = activeReservations.filter(r => {
-        const rSessionId = String(r.session_id || '').trim();
-        const rMonitoredBy = String(r.monitored_by || '').trim();
-        const sessionMatches = rSessionId === String(sessionId || '').trim();
-        const userMatches = rMonitoredBy.toLowerCase() === currentUser.toLowerCase();
-        return sessionMatches && userMatches;
-      });
-
-      if (myActiveReservations.length === 0) {
-        // Someone else has it locked
-        const otherLock = activeReservations[0];
-        const lockedBy = String(otherLock.monitored_by || 'another user').trim();
-        alert(`❌ ERROR: This portfolio "${selectedPortfolioForAction}" (Hour ${currentHour}) is locked by "${lockedBy}".\n\nOnly the person who locked it can open the session sheet and add issues.`);
-        return; // Don't open the drawer
-      }
-    }
-
-    // CRITICAL: Only pre-select portfolio if it's NOT locked by someone else
-    // If it's locked by someone else, don't dispatch the event (which would create a new lock)
-    if (isPortfolioLockedByOther) {
-      console.log('🚫 NOT pre-selecting portfolio - it is locked by someone else');
-      return; // Don't proceed - don't open drawer, don't pre-select
     }
 
     // Restore original behavior: scroll to main log form and pre-select portfolio
@@ -1947,11 +1898,11 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       </div>
 
       {/* Main Content */}
-      <main className="max-w-full mx-auto px-6 py-6">
+      <main className={`max-w-full mx-auto px-6 py-6 transition-all duration-300 ${sessionPortfolioName ? 'mr-[36rem]' : ''}`} style={sessionPortfolioName ? { maxWidth: 'calc(100vw - 42rem)' } : {}}>
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {/* Quick Portfolio Reference Section */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className={`bg-white rounded-lg shadow p-6 overflow-visible ${sessionPortfolioName ? 'max-w-[calc(100vw-42rem)]' : ''}`}>
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">Quick Portfolio Reference</h2>
@@ -2028,12 +1979,12 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
               </div>
 
               {/* Portfolio Cards Grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-1.5">
-                {portfolioCards
-                  .filter(portfolio => 
-                    portfolio.name.toLowerCase().includes(portfolioSearchTerm.toLowerCase())
-                  )
-                  .map((portfolio) => {
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-1.5 overflow-visible">
+                  {portfolioCards
+                    .filter(portfolio => 
+                      portfolio.name.toLowerCase().includes(portfolioSearchTerm.toLowerCase())
+                    )
+                    .map((portfolio) => {
                   const status = getPortfolioStatus(portfolio.name);
                   const reservation = getPortfolioReservation(portfolio.name);
                   
@@ -2078,11 +2029,33 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                     });
                   }
                   
+                  const isHovered = hoveredPortfolio === portfolio.name;
+                  
                   return (
                     <div
                       key={portfolio.name}
                       onClick={() => handlePortfolioClick(portfolio.name)}
-                      className={`px-1.5 py-2.5 rounded ${cardColor} ${cardBorder} transition-all hover:shadow-md cursor-pointer relative group`}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const viewportHeight = window.innerHeight;
+                        const spaceAbove = rect.top;
+                        const spaceBelow = viewportHeight - rect.bottom;
+                        
+                        // Show tooltip above if there's more space above, otherwise below
+                        const showAbove = spaceAbove > spaceBelow;
+                        
+                        setHoveredPortfolio(portfolio.name);
+                        setTooltipPosition({
+                          top: showAbove ? rect.top - 10 : rect.bottom + 10,
+                          left: rect.left + rect.width / 2,
+                          showAbove: showAbove
+                        });
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredPortfolio(null);
+                        setTooltipPosition(null);
+                      }}
+                      className={`px-1.5 py-2.5 rounded ${cardColor} ${cardBorder} transition-all hover:shadow-md cursor-pointer relative group overflow-visible`}
                     >
                       {/* Last Activity Hour - Top Right Corner - Always Visible */}
                       {lastActivityHour !== null ? (
@@ -2112,43 +2085,11 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                           Click for options
                         </div>
                       </div>
-                      
-                      {/* Hover Tooltip */}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 max-w-xs space-y-2">
-                        {/* Logged By Box */}
-                        <div className="bg-gray-900 text-white text-xs rounded shadow-lg px-3 py-1.5">
-                          {reservation ? (
-                            <>
-                              🔒 Locked by: <span className="font-bold">{reservation.monitored_by}</span>
-                              <br />
-                              For Hour: <span className="font-bold">{reservation.issue_hour}</span>
-                            </>
-                          ) : (
-                            <>
-                              Logged by: {loggedBy}
-                              {lastActivityHour !== null && (
-                                <>
-                                  <br />
-                                  Last Activity: {lastActivityHour.isYesterday ? 'Yesterday' : 'Today'} Hour {lastActivityHour.hour}
-                                </>
-                              )}
-                            </>
-                          )}
-                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
-                        </div>
-                        
-                        {/* Site Range Box - Only show if site_range exists and is not empty */}
-                        {portfolio.site_range && portfolio.site_range.trim() !== '' && (
-                          <div className="bg-blue-900 text-white text-xs rounded shadow-lg px-3 py-1.5">
-                            <span className="font-semibold">Site Range:</span> {portfolio.site_range}
-                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-blue-900"></div>
-                          </div>
-                        )}
-                      </div>
                     </div>
                   );
                 })}
               </div>
+              
             </div>
 
             {/* Hourly Coverage Analysis */}
@@ -2308,17 +2249,32 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                     </button>
                   </div>
                   
+                  {/* Display saved sites checked details - Always visible to all users when "No" is selected */}
+                  {selectedPortfolioRecord?.sites_checked_details && 
+                   (selectedPortfolioSitesChecked === false || showSitesCheckedInput) && (
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="text-xs font-semibold text-gray-700 mb-1">Sites Checked Details:</div>
+                      <div className="text-sm text-gray-800">{selectedPortfolioRecord.sites_checked_details}</div>
+                    </div>
+                  )}
+                  
                   {/* Text input for sites checked when "No" is selected */}
                   {(selectedPortfolioSitesChecked === false || showSitesCheckedInput) && (
                     <div className="mt-4">
                       <label className="block text-xs font-medium text-gray-700 mb-2">
-                        Which sites have you checked? (e.g., "Site 1 to Site 5", "Sites 1-10")
+                        {selectedPortfolioRecord?.sites_checked_details 
+                          ? "Update sites checked details (e.g., \"Site 1 to Site 5\", \"Sites 1-10\")"
+                          : "Which sites have you checked? (e.g., \"Site 1 to Site 5\", \"Sites 1-10\")"
+                        }
                       </label>
                       <input
                         type="text"
                         value={sitesCheckedText}
                         onChange={(e) => setSitesCheckedText(e.target.value)}
-                        placeholder="Enter sites checked (e.g., Site 1 to Site 5)"
+                        placeholder={selectedPortfolioRecord?.sites_checked_details 
+                          ? "Update sites checked details..."
+                          : "Enter sites checked (e.g., Site 1 to Site 5)"
+                        }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         onBlur={() => {
                           // Auto-save when user leaves the input field (only if "No" is selected)
@@ -2328,16 +2284,6 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                           }
                         }}
                       />
-                    </div>
-                  )}
-                  
-                  {/* Display saved sites checked details - show below input if text exists */}
-                  {selectedPortfolioRecord?.sites_checked_details && 
-                   (selectedPortfolioSitesChecked === false || showSitesCheckedInput) && 
-                   !sitesCheckedText.trim() && (
-                    <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-gray-700">
-                      <span className="font-semibold">Sites checked: </span>
-                      {selectedPortfolioRecord.sites_checked_details}
                     </div>
                   )}
                   
@@ -2457,6 +2403,77 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           }}
         />
       )}
+
+      {/* Fixed Position Tooltip - Rendered at root level to appear above drawer */}
+      {hoveredPortfolio && tooltipPosition && (() => {
+        const portfolio = portfolioCards.find(p => p.name === hoveredPortfolio);
+        if (!portfolio) return null;
+        
+        const status = getPortfolioStatus(portfolio.name);
+        const reservation = getPortfolioReservation(portfolio.name);
+        const latestIssue = getLatestIssueForPortfolio(portfolio.name);
+        const loggedBy = latestIssue?.monitored_by || 'No data';
+        const lastActivityHour = latestIssue ? {
+          hour: new Date(latestIssue.created_at).getHours(),
+          isYesterday: new Date(latestIssue.created_at).toDateString() !== new Date().toDateString()
+        } : null;
+        
+        // Always show tooltip, even if no data
+        return (
+          <div
+            className="fixed pointer-events-none"
+            style={{
+              top: tooltipPosition.showAbove ? `${tooltipPosition.top}px` : `${tooltipPosition.top}px`,
+              left: `${tooltipPosition.left}px`,
+              transform: tooltipPosition.showAbove ? 'translate(-50%, -100%)' : 'translate(-50%, 0%)',
+              marginTop: tooltipPosition.showAbove ? '-8px' : '8px',
+              zIndex: 999999
+            }}
+          >
+            <div className="bg-gray-900 text-white text-xs rounded shadow-xl px-3 py-2 max-w-xs border border-gray-700">
+              {reservation ? (
+                <>
+                  🔒 Locked by: <span className="font-bold">{reservation.monitored_by}</span>
+                  <br />
+                  For Hour: <span className="font-bold">{reservation.issue_hour}</span>
+                </>
+              ) : (
+                <>
+                  Logged by: <span className="font-bold">{loggedBy}</span>
+                  {lastActivityHour !== null ? (
+                    <>
+                      <br />
+                      Last Activity: {lastActivityHour.isYesterday ? 'Yesterday' : 'Today'} Hour {lastActivityHour.hour}
+                    </>
+                  ) : (
+                    <>
+                      <br />
+                      <span className="text-gray-300 italic">No recent activity</span>
+                    </>
+                  )}
+                </>
+              )}
+              {tooltipPosition.showAbove && (
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
+              )}
+              {!tooltipPosition.showAbove && (
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 border-4 border-transparent border-b-gray-900"></div>
+              )}
+            </div>
+            {portfolio.site_range && portfolio.site_range.trim() !== '' && (
+              <div className={`bg-blue-900 text-white text-xs rounded shadow-xl px-3 py-2 whitespace-nowrap border border-blue-700 ${tooltipPosition.showAbove ? 'mt-2' : 'mb-2'}`}>
+                <span className="font-semibold">Site Range:</span> {portfolio.site_range}
+                {tooltipPosition.showAbove && (
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-blue-900"></div>
+                )}
+                {!tooltipPosition.showAbove && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 border-4 border-transparent border-b-blue-900"></div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {showScrollTop && (
         <button
