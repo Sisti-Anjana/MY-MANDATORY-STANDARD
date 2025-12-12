@@ -28,18 +28,30 @@ if (USE_SUPABASE) {
     all: async (query, params, callback) => {
       try {
         const result = await executeSupabaseQuery(query, params);
-        callback(null, result);
+        if (callback && typeof callback === 'function') {
+          callback(null, result);
+        }
       } catch (error) {
-        callback(error);
+        if (callback && typeof callback === 'function') {
+          callback(error);
+        } else {
+          throw error;
+        }
       }
     },
     
     get: async (query, params, callback) => {
       try {
         const result = await executeSupabaseQuery(query, params);
-        callback(null, result[0] || null);
+        if (callback && typeof callback === 'function') {
+          callback(null, result[0] || null);
+        }
       } catch (error) {
-        callback(error);
+        if (callback && typeof callback === 'function') {
+          callback(error);
+        } else {
+          throw error;
+        }
       }
     },
     
@@ -47,9 +59,16 @@ if (USE_SUPABASE) {
       try {
         const result = await executeSupabaseQuery(query, params);
         const mockThis = { lastID: result.id, changes: result.changes || 1 };
-        callback.call(mockThis, null);
+        if (callback && typeof callback === 'function') {
+          callback.call(mockThis, null);
+        }
       } catch (error) {
-        callback.call({ changes: 0 }, error);
+        if (callback && typeof callback === 'function') {
+          callback.call({ changes: 0 }, error);
+        } else {
+          // If no callback, throw the error so it can be caught by caller
+          throw error;
+        }
       }
     }
   };
