@@ -20,7 +20,7 @@ const resolvePortfolioName = (issue, portfolios = []) => {
   return 'Unknown';
 };
 
-const PerformanceAnalytics = ({ issues, portfolios }) => {
+const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
   const [range, setRange] = useState('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -85,6 +85,12 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
     };
   }, [issues, range, customStart, customEnd]);
 
+  const displayName = (name) => {
+    if (!name) return 'Unknown';
+    const key = name.toLowerCase();
+    return (userDisplayMap && userDisplayMap[key]) || name;
+  };
+
   const analytics = useMemo(() => {
     const dataset = rangeConfig.filteredIssues;
     const referenceDate = new Date(rangeConfig.end);
@@ -141,6 +147,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
       if (!perUserMap[user]) {
         perUserMap[user] = {
           user,
+          displayName: displayName(user),
           issues: 0,
           issuesYes: 0,
           missedAlerts: 0,
@@ -243,6 +250,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
 
       return {
         ...u,
+        displayName: u.displayName || displayName(u.user),
         portfoliosCount: totalVisits, // Count portfolio visits based on time gaps
         hoursCount: u.hours.size
       };
@@ -518,7 +526,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
                   onClick={() => {
                     const header = ['User', 'Total Count', 'Total Portfolios Monitored', 'Monitoring Active Hours', 'Missed Alerts'];
                     const rows = analytics.perUserStats.map(u => [
-                      u.user,
+                      u.displayName || u.user,
                       u.issues,
                       u.portfoliosCount,
                       u.hoursCount,
@@ -572,10 +580,10 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm" style={{ backgroundColor: '#76AB3F' }}>
-                            {u.user.charAt(0).toUpperCase()}
+                            {(u.displayName || u.user || '?').charAt(0).toUpperCase()}
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-bold text-gray-900">{u.user}</div>
+                            <div className="text-sm font-bold text-gray-900">{u.displayName || u.user}</div>
                           </div>
                         </div>
                       </td>
@@ -649,7 +657,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
                     {selectedPerformer.rank}
                   </div>
                   <div className="flex-1">
-                    <h4 className="text-sm font-bold text-gray-900">{selectedPerformer.user}</h4>
+                    <h4 className="text-sm font-bold text-gray-900">{selectedPerformer.displayName || selectedPerformer.user}</h4>
                     <p className="text-xs text-gray-600">Rank #{selectedPerformer.rank} in this category</p>
                   </div>
                 </div>
@@ -681,7 +689,7 @@ const PerformanceAnalytics = ({ issues, portfolios }) => {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
                 <p className="text-xs font-semibold text-blue-900 mb-1">Why they're in the top list</p>
                 <p className="text-xs text-blue-800 leading-relaxed">
-                  {selectedPerformer.user} achieved <strong className="font-bold">{selectedPerformer.value}</strong> {selectedPerformer.metric.toLowerCase()}, ranking them #{selectedPerformer.rank} among all team members in the "{selectedPerformer.category}" category.
+                  {(selectedPerformer.displayName || selectedPerformer.user)} achieved <strong className="font-bold">{selectedPerformer.value}</strong> {selectedPerformer.metric.toLowerCase()}, ranking them #{selectedPerformer.rank} among all team members in the "{selectedPerformer.category}" category.
                 </p>
               </div>
 
@@ -802,6 +810,7 @@ const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', 
                 key={item.user} 
                 onClick={() => onItemClick && onItemClick({
                   user: item.user,
+                  displayName: item.displayName || item.user,
                   rank: idx + 1,
                   value: item[metricKey],
                   category: label,
@@ -824,7 +833,7 @@ const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', 
                     {idx + 1}
                   </div>
                   <span className={`text-sm truncate ${isTopThree ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
-                    {item.user}
+                    {item.displayName || item.user}
                   </span>
                 </div>
                 <span className={`text-sm ml-3 flex-shrink-0 px-2.5 py-1 rounded ${

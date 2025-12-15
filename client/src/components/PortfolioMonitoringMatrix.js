@@ -84,7 +84,7 @@ const getDateRange = (range) => {
   }
 };
 
-const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPersonnel = [] }) => {
+const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPersonnel = [], userDisplayMap = {} }) => {
   // Set default to today
   const todayRange = getDateRange('today');
   const [startDate, setStartDate] = useState(todayRange.start);
@@ -170,6 +170,12 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     });
   }, [issues, startDate, endDate, issueFilter]);
 
+  const normalizeDisplay = (name) => {
+    if (!name) return 'Unknown';
+    const key = name.toLowerCase();
+    return (userDisplayMap && userDisplayMap[key]) || name;
+  };
+
   // Build matrix: Users (rows) x Hours (columns)
   const matrix = useMemo(() => {
     const allHours = Array.from({ length: 24 }, (_, i) => i); // 0-23
@@ -186,18 +192,35 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     });
     
     // Combine users from issues and monitoredPersonnel, then deduplicate
-    const allUsers = Array.from(new Set([
+    let allUsers = Array.from(new Set([
       ...Array.from(usersFromIssues),
       ...(monitoredPersonnel || [])
     ]));
+
+    // Remove users with no portfolio activity in the last 6 months
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const recentIssues = filteredIssues.filter(issue => {
+      if (!issue.created_at) return false;
+      const d = new Date(issue.created_at);
+      return !Number.isNaN(d.getTime()) && d >= sixMonthsAgo;
+    });
+    const activeUsers = new Set();
+    recentIssues.forEach(issue => {
+      if (issue.monitored_by) {
+        activeUsers.add(issue.monitored_by.toLowerCase());
+      }
+    });
+    allUsers = allUsers.filter(user => user && activeUsers.has(user.toLowerCase()));
     
-    // Filter users based on search
+    // Filter users based on search (use display names for search)
     let users = allUsers;
     if (userSearch.trim()) {
       const searchLower = userSearch.toLowerCase();
-      users = users.filter(user => 
-        user && user.toLowerCase().includes(searchLower)
-      );
+      users = users.filter(user => {
+        const display = normalizeDisplay(user);
+        return display && display.toLowerCase().includes(searchLower);
+      });
     }
     
     // Sort users alphabetically for consistent display
@@ -226,7 +249,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
 
     // Process each user
     const rows = users.map((user) => {
-      const row = { userName: user, values: {}, total: 0 };
+      const row = { userName: user, displayName: normalizeDisplay(user), values: {}, total: 0 };
       let rowTotal = 0;
 
       // Process each hour
@@ -395,11 +418,16 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     
     return filteredRows
       .sort((a, b) => b.total - a.total) // Sort by total descending
-      .map(row => ({
-        user: row.userName.length > 20 ? row.userName.substring(0, 20) + '...' : row.userName,
-        portfolios: row.total,
-        fullName: row.userName
-      }));
+      .map(row => {
+        const display = row.displayName || row.userName || '';
+        const short = display.length > 20 ? display.substring(0, 20) + '...' : display;
+        return {
+          user: short,
+          portfolios: row.total,
+          fullName: display,
+          rawKey: row.userName // Store raw key for matching
+        };
+      });
   }, [matrix.rows, chartUserSearch]);
 
   // Get detailed stats for selected user
@@ -511,8 +539,9 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       };
     }).sort((a, b) => a.hour - b.hour);
     
+    const display = normalizeDisplay(selectedUser);
     return {
-      userName: selectedUser,
+      userName: display,
       totalIssues: userIssues.length,
       issuesYes,
       issuesNo: userIssues.length - issuesYes,
@@ -859,7 +888,11 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   radius={[4, 4, 0, 0]}
                   maxBarSize={40}
                   onClick={(data) => {
-                    if (data && data.fullName) {
+                    if (data && data.rawKey) {
+                      // Use raw key for matching issues (stored in monitored_by field)
+                      setSelectedUser(data.rawKey);
+                    } else if (data && data.fullName) {
+                      // Fallback to fullName if rawKey not available
                       setSelectedUser(data.fullName);
                     }
                   }}
@@ -871,7 +904,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                       fill={index < 3 ? 'url(#barGradientTop)' : 'url(#barGradient)'}
                       style={{ 
                         cursor: 'pointer',
-                        opacity: selectedUser && selectedUser.toLowerCase() === entry.fullName.toLowerCase() ? 0.7 : 1
+                        opacity: selectedUser && selectedUser.toLowerCase() === (entry.rawKey || entry.fullName).toLowerCase() ? 0.7 : 1
                       }}
                     />
                   ))}
@@ -901,7 +934,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
             <div className="bg-gradient-to-r from-[#76AB3F] to-[#5a8f2f] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
               <div>
                 <h3 className="text-xl font-bold text-white">User Performance Details</h3>
-                <p className="text-sm text-green-50">{selectedUser}</p>
+                <p className="text-sm text-green-50">{selectedUserDetails.userName || selectedUser}</p>
               </div>
               <button
                 onClick={() => setSelectedUser(null)}
@@ -1234,7 +1267,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                       className="sticky left-0 z-10 bg-white px-4 py-3 text-left font-semibold text-gray-900 border-b border-gray-100"
                       scope="row"
                     >
-                      <div>{row.userName}</div>
+                      <div>{row.displayName || row.userName}</div>
                       <div className="text-xs text-gray-400 font-normal">
                         {row.total} portfolio{row.total === 1 ? '' : 's'} summary
                       </div>
@@ -1286,7 +1319,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                               }}
                             >
                               <div className="font-bold text-sm mb-2 pb-2 border-b border-gray-700">
-                                {row.userName} - Hour {hour}:00
+                                {(row.displayName || row.userName)} - Hour {hour}:00
                               </div>
                               
                               {/* Total Count - All Issues */}

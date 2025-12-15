@@ -7,6 +7,12 @@ const AdminPanel = ({ onClose }) => {
   const [portfolios, setPortfolios] = useState([]);
   const [users, setUsers] = useState([]);
   const [loginUsers, setLoginUsers] = useState([]);
+  const [editingLoginUser, setEditingLoginUser] = useState(null);
+  const [editLoginUsername, setEditLoginUsername] = useState('');
+  const [editLoginFullName, setEditLoginFullName] = useState('');
+  const [editLoginRole, setEditLoginRole] = useState('user');
+  const [editLoginActive, setEditLoginActive] = useState(true);
+  const [editLoginPassword, setEditLoginPassword] = useState('');
   const [adminLogs, setAdminLogs] = useState([]);
   const [issues, setIssues] = useState([]);
   const [activeLocks, setActiveLocks] = useState([]);
@@ -599,6 +605,67 @@ const AdminPanel = ({ onClose }) => {
     }
   };
 
+  const openEditLoginUser = (user) => {
+    setEditingLoginUser(user);
+    setEditLoginUsername(user.username || '');
+    setEditLoginFullName(user.full_name || '');
+    setEditLoginRole(user.role || 'user');
+    setEditLoginActive(user.is_active !== false);
+    setEditLoginPassword(''); // optional new password
+  };
+
+  const handleUpdateLoginUser = async () => {
+    if (!editingLoginUser) return;
+    if (!editLoginUsername.trim()) {
+      alert('Please enter a username');
+      return;
+    }
+    // Prevent duplicate username (other users)
+    const duplicate = loginUsers.find(
+      u => u.user_id !== editingLoginUser.user_id && u.username?.toLowerCase() === editLoginUsername.trim().toLowerCase()
+    );
+    if (duplicate) {
+      alert('❌ Username already exists. Choose a different username.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const updatePayload = {
+        username: editLoginUsername.trim(),
+        full_name: editLoginFullName.trim() || editLoginUsername.trim(),
+        role: editLoginRole,
+        is_active: editLoginActive
+      };
+      if (editLoginPassword.trim()) {
+        if (editLoginPassword.trim().length < 6) {
+          alert('Password must be at least 6 characters long');
+          setLoading(false);
+          return;
+        }
+        updatePayload.password_hash = editLoginPassword.trim();
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .update(updatePayload)
+        .eq('user_id', editingLoginUser.user_id);
+
+      if (error) throw error;
+
+      await addAdminLog('login_user_updated', `Updated login user: ${editLoginUsername.trim()}`);
+      alert('✅ Login user updated successfully!');
+      setEditingLoginUser(null);
+      setEditLoginPassword('');
+      fetchData();
+    } catch (error) {
+      console.error('Error updating login user:', error);
+      alert('❌ Error updating login user: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAddLog = async () => {
     if (!newLogNote.trim()) {
       alert('Please enter a log note');
@@ -1008,6 +1075,12 @@ const AdminPanel = ({ onClose }) => {
                         </div>
                         <div className="flex gap-2">
                           <button
+                            onClick={() => openEditLoginUser(user)}
+                            className="px-4 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 font-medium text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
                             onClick={() => handleToggleUserStatus(user.user_id, user.is_active)}
                             className={`px-4 py-2 rounded font-medium text-sm ${
                               user.is_active
@@ -1301,6 +1374,101 @@ const AdminPanel = ({ onClose }) => {
               monitoredPersonnel={users.map(u => u.name || u)}
             />
           )}
+
+        {/* Edit Login User Modal */}
+        {editingLoginUser && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Login User</h3>
+                <button
+                  onClick={() => {
+                    setEditingLoginUser(null);
+                    setEditLoginPassword('');
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                  <input
+                    type="text"
+                    value={editLoginUsername}
+                    onChange={(e) => setEditLoginUsername(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    value={editLoginFullName}
+                    onChange={(e) => setEditLoginFullName(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                    <select
+                      value={editLoginRole}
+                      onChange={(e) => setEditLoginRole(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    >
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 mt-6 md:mt-0">
+                    <input
+                      type="checkbox"
+                      checked={editLoginActive}
+                      onChange={(e) => setEditLoginActive(e.target.checked)}
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <span className="text-sm text-gray-700">Active</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password (optional)</label>
+                  <input
+                    type="text"
+                    value={editLoginPassword}
+                    onChange={(e) => setEditLoginPassword(e.target.value)}
+                    placeholder="Leave blank to keep existing"
+                    className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Minimum 6 characters. Leave empty to keep current password.</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setEditingLoginUser(null);
+                    setEditLoginPassword('');
+                  }}
+                  className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateLoginUser}
+                  className="px-5 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         </div>
 
         {/* Footer */}

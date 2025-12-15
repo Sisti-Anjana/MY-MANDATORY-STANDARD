@@ -29,12 +29,14 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [updatingSitesCheckPortfolio, setUpdatingSitesCheckPortfolio] = useState(null);
   const [sitesCheckError, setSitesCheckError] = useState(null);
   const [isAutoRefreshing, setIsAutoRefreshing] = useState(false); // For auto-refresh indicator
+  const [userDisplayMap, setUserDisplayMap] = useState({}); // username/full_name -> display name
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [sessionPortfolioName, setSessionPortfolioName] = useState(null);
   const [sessionHour, setSessionHour] = useState(null);
   const [logoMissing, setLogoMissing] = useState(false);
   const [sitesCheckedText, setSitesCheckedText] = useState(''); // Text for which sites were checked when "No" is selected
   const [showSitesCheckedInput, setShowSitesCheckedInput] = useState(false); // Show input when "No" is selected
+  const [showUnlockInput, setShowUnlockInput] = useState(false); // Show unlock reason input
   const [issueDetailsInitialPortfolioId, setIssueDetailsInitialPortfolioId] = useState('');
   const [lastRefresh, setLastRefresh] = useState(new Date()); // Track when data was last refreshed
   const [portfolioSearchTerm, setPortfolioSearchTerm] = useState(''); // Search term for filtering portfolios
@@ -298,7 +300,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
     window.addEventListener('portfolioUnlocked', handlePortfolioUnlocked);
     
-    // CRITICAL: Reload issues and portfolios every 3 seconds for real-time updates
+    // CRITICAL: Reload issues and portfolios every 15 seconds for real-time updates
     // Synchronized refresh interval to ensure all instances stay in sync
     const dataRefreshInterval = setInterval(async () => {
       setIsAutoRefreshing(true);
@@ -306,7 +308,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       await fetchDataBackground(); // Use background fetch instead of regular fetchData
       await fetchActiveReservations(); // Also refresh reservations to show locks
       setTimeout(() => setIsAutoRefreshing(false), 300); // Show indicator briefly
-    }, 3000); // 3s for consistent sync across all instances
+    }, 15000); // 15s for consistent sync across all instances
     
     return () => {
       clearInterval(interval);
@@ -587,53 +589,54 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   }, [isPortfolioLockedByOther, portfolioLockedBy, showActionModal, selectedPortfolioForAction]);
 
   const loadMonitoredPersonnel = async () => {
+    // Single source of truth: login users (users table)
     let usersList = [];
-    
+    const displayMap = {};
+
     try {
-      const { data, error } = await supabase
-        .from('monitored_personnel')
-        .select('name')
-        .order('name', { ascending: true });
+      const { data: loginUsersData, error: loginUsersError } = await supabase
+        .from('users')
+        .select('username, full_name')
+        .order('username');
 
-      if (error) {
-        console.warn('Error fetching monitored_personnel from Supabase:', error.message);
-        throw error;
-      }
-
-      if (data && data.length > 0) {
-        usersList = data.map(person => person.name);
+      if (loginUsersError) {
+        console.warn('Error fetching login users for monitored list:', loginUsersError.message);
+      } else if (loginUsersData && loginUsersData.length > 0) {
+        loginUsersData.forEach(user => {
+          const uname = (user.username || '').trim();
+          const fname = (user.full_name || '').trim();
+          const display = fname || uname;
+          if (uname) {
+            displayMap[uname.toLowerCase()] = display;
+          }
+          if (fname) {
+            displayMap[fname.toLowerCase()] = display;
+          }
+          if (display) usersList.push(display);
+        });
       }
     } catch (err) {
-      console.warn('Falling back to local monitored personnel list:', err.message);
+      console.warn('Unexpected error loading login users for monitored list:', err.message);
     }
 
-    // If no data from Supabase, try localStorage
-    if (usersList.length === 0) {
-      const storedUsers = localStorage.getItem('monitoredPersonnel');
-      if (storedUsers) {
-        usersList = JSON.parse(storedUsers);
-      } else {
-        // Use default users
-        usersList = [
-          'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L', 
-          'jenny', 'Kumar S', 'Lakshmi B', 'Manoj D', 'Rajesh K',
-          'Ravi T', 'Vikram N'
-        ];
-        localStorage.setItem('monitoredPersonnel', JSON.stringify(usersList));
+    // Ensure uniqueness
+    usersList = Array.from(new Set(usersList));
+
+    // Always include the currently logged-in user if missing
+    const loggedInUser = sessionStorage.getItem('username') || sessionStorage.getItem('fullName');
+    if (loggedInUser) {
+      const key = loggedInUser.toLowerCase();
+      if (!usersList.some(u => u.toLowerCase() === key)) {
+        usersList.unshift(loggedInUser);
       }
+      // ensure display map has this user
+      displayMap[key] = loggedInUser;
     }
+
+    // Persist for reference (but still sourced from users table on next load)
+    localStorage.setItem('monitoredPersonnel', JSON.stringify(usersList));
     
-    // CRITICAL FIX: Add logged-in user to the list if not present
-    const loggedInUser = sessionStorage.getItem('username') || 
-                        sessionStorage.getItem('fullName');
-    
-    if (loggedInUser && !usersList.includes(loggedInUser)) {
-      console.log('✅ Adding logged-in user to monitored personnel list:', loggedInUser);
-      usersList.unshift(loggedInUser); // Add to beginning of list
-      // Update localStorage to persist this change
-      localStorage.setItem('monitoredPersonnel', JSON.stringify(usersList));
-    }
-    
+    setUserDisplayMap(displayMap);
     setMonitoredPersonnel(usersList);
   };
 
@@ -878,6 +881,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       setSitesCheckError('Failed to update sites status. Please try again.');
     } finally {
       setUpdatingSitesCheckPortfolio(null);
+      setShowUnlockInput(false);
     }
   };
 
@@ -885,6 +889,24 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     ? findPortfolioRecord(selectedPortfolioForAction)
     : null;
   const selectedPortfolioSitesChecked = selectedPortfolioRecord?.all_sites_checked === true;
+
+  // Check if the selected portfolio is currently locked and by whom
+  const selectedPortfolioReservation = selectedPortfolioForAction
+    ? getPortfolioReservation(selectedPortfolioForAction)
+    : null;
+  // Use the same identity used when creating locks (username first, then fullName)
+  const currentUserName =
+    (sessionStorage.getItem('username') || sessionStorage.getItem('fullName') || '').trim();
+  const isPortfolioLockedByCurrentUser =
+    !!(
+      selectedPortfolioReservation &&
+      String(selectedPortfolioReservation.monitored_by || '')
+        .trim()
+        .toLowerCase() === currentUserName.toLowerCase()
+    );
+  // Allow unlock ONLY if the current user owns the lock
+  const canUnlockSelectedPortfolio =
+    !!selectedPortfolioReservation && isPortfolioLockedByCurrentUser;
   
   // Load sites checked text when modal opens or portfolio changes
   useEffect(() => {
@@ -1357,7 +1379,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   // Check if portfolio is currently reserved (locked by someone)
   // CRITICAL FIX: Check for reservations for ANY hour, not just current hour
   // This ensures locks are visible even if they're for different hours
-  const getPortfolioReservation = (portfolioName) => {
+  function getPortfolioReservation(portfolioName) {
     const portfolio = portfolios.find(p => {
       const pName = (p.name || '').trim();
       return pName.toLowerCase() === portfolioName.trim().toLowerCase();
@@ -1527,7 +1549,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         }
       }
     }
-  };
+  }
 
   const handleViewIssues = () => {
     const targetName = selectedPortfolioForAction;
@@ -1594,6 +1616,48 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     // Also open the new session sheet for this portfolio and current hour
     setSessionPortfolioName(selectedPortfolioForAction);
     setSessionHour(currentHour);
+  };
+
+  const handleUnlockCurrentPortfolio = async () => {
+    if (!selectedPortfolioForAction) return;
+    const record = portfolios.find((p) => p.name === selectedPortfolioForAction);
+    const portfolioId = record?.portfolio_id || record?.id;
+    if (!portfolioId) {
+      alert('❌ ERROR: Unable to determine portfolio ID to unlock.');
+      return;
+    }
+
+    try {
+      setUpdatingSitesCheckPortfolio(selectedPortfolioForAction);
+      // Save sites checked details as "No" (not fully completed) if any text is provided
+      const reasonText = sitesCheckedText?.trim();
+      if (reasonText) {
+        await updatePortfolioSitesChecked(selectedPortfolioForAction, false);
+      }
+
+      // Release lock for this portfolio/hour ONLY for the current user's session
+      await releaseReservationForPortfolio(portfolioId, currentHour, false);
+
+      // Refresh reservations and data to update UI
+      await fetchActiveReservations();
+      await fetchDataBackground();
+
+      alert(`✅ Portfolio \"${selectedPortfolioForAction}\" has been unlocked. Other users can now lock and log issues for this hour.`);
+
+      // Close modal and reset state similar to close button
+      setShowActionModal(false);
+      setSelectedPortfolioForAction(null);
+      setSitesCheckError(null);
+      setSitesCheckedText('');
+      setShowSitesCheckedInput(false);
+      setIsPortfolioLockedByOther(false);
+      setPortfolioLockedBy(null);
+    } catch (error) {
+      console.error('❌ Error unlocking portfolio from action modal:', error);
+      alert('❌ Error unlocking portfolio. Please try again.');
+    } finally {
+      setUpdatingSitesCheckPortfolio(null);
+    }
   };
 
   const handleEditIssue = async (issue) => {
@@ -1869,14 +1933,16 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             >
               Issue Details
             </button>
-            <button
-              onClick={() => setActiveTab('performance')}
-              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                activeTab === 'performance' ? 'border-b-2 border-white' : ''
-              }`}
-            >
-              Performance Analytics
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('performance')}
+                className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
+                  activeTab === 'performance' ? 'border-b-2 border-white' : ''
+                }`}
+              >
+                Performance Analytics
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('issuesByUser')}
               className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
@@ -1885,14 +1951,16 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             >
               Issues by User
             </button>
-            <button
-              onClick={() => setActiveTab('portfolioMatrix')}
-              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                activeTab === 'portfolioMatrix' ? 'border-b-2 border-white' : ''
-              }`}
-            >
-              Coverage Matrix
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('portfolioMatrix')}
+                className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
+                  activeTab === 'portfolioMatrix' ? 'border-b-2 border-white' : ''
+                }`}
+              >
+                Coverage Matrix
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -2118,7 +2186,11 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         )}
 
         {activeTab === 'performance' && (
-          <PerformanceAnalytics issues={issues} portfolios={portfolios} />
+          <PerformanceAnalytics 
+            issues={issues} 
+            portfolios={portfolios} 
+            userDisplayMap={userDisplayMap}
+          />
         )}
 
         {activeTab === 'issuesByUser' && (
@@ -2126,6 +2198,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             issues={issues} 
             portfolios={portfolios}
             monitoredPersonnel={monitoredPersonnel}
+            userDisplayMap={userDisplayMap}
             onEditIssue={handleEditIssue}
             onDeleteIssue={handleDeleteIssue}
             isAdmin={isAdmin}
@@ -2137,6 +2210,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             issues={issues}
             portfolios={portfolios}
             monitoredPersonnel={monitoredPersonnel}
+            userDisplayMap={userDisplayMap}
           />
         )}
 
@@ -2191,6 +2265,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                     setShowSitesCheckedInput(false);
                     setIsPortfolioLockedByOther(false);
                     setPortfolioLockedBy(null);
+                    setShowUnlockInput(false);
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -2297,6 +2372,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
               </div>
 
               <div className="space-y-3">
+                {/* View Issues */}
                 <button
                   onClick={handleViewIssues}
                   className="w-full flex items-center justify-between p-4 bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 hover:border-blue-300 rounded-lg transition-all"
@@ -2318,6 +2394,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                   </svg>
                 </button>
 
+                {/* Log New Issue */}
                 <button
                   onClick={(e) => {
                     if (isPortfolioLockedByOther) {
@@ -2372,6 +2449,55 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                     </svg>
                   )}
                 </button>
+
+                {/* Unlock Portfolio (visible when locked and either current user or admin can unlock) */}
+                {canUnlockSelectedPortfolio && (
+                  <div className="space-y-2 flex flex-col items-center">
+                    <button
+                      onClick={() => {
+                        // First click just reveals the text box; actual unlock happens on Submit
+                        setSitesCheckedText(''); // Start with a fresh text box for unlock reason
+                        setShowUnlockInput(true);
+                      }}
+                      className="mx-auto inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 border border-red-700 rounded-md transition-all text-white font-semibold text-sm"
+                    >
+                      UNLOCK
+                    </button>
+
+                    {showUnlockInput && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2 w-full max-w-sm">
+                        <label className="block text-xs font-medium text-red-700">
+                          Why are you unlocking / how many sites did you check?
+                        </label>
+                        <textarea
+                          rows={2}
+                          className="w-full px-3 py-2 border border-red-300 rounded text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400"
+                          placeholder='e.g., "Sites 1–10 checked", "Shift handover", etc.'
+                          value={sitesCheckedText}
+                          onChange={(e) => setSitesCheckedText(e.target.value)}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                            onClick={() => {
+                              setShowUnlockInput(false);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleUnlockCurrentPortfolio}
+                            className="px-4 py-1.5 text-xs rounded bg-red-600 hover:bg-red-700 text-white font-semibold"
+                          >
+                            Submit & Unlock
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
