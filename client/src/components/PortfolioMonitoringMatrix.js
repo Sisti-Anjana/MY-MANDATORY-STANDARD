@@ -404,8 +404,54 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     return selectedHour && selectedHour !== '' ? [parseInt(selectedHour, 10)] : allHours;
   }, [selectedHour]);
 
-  // Prepare chart data for user totals - Show ALL users who logged issues
+  // Prepare chart data for user totals.
+  // If portfolios have all_sites_checked_by, use that so ONLY the person who completed all sites gets credit.
+  // Otherwise, fall back to matrix-based totals from issues.
   const userChartData = useMemo(() => {
+    // New logic: count completed portfolios by all_sites_checked_by
+    const completedByCounts = {};
+    (portfolios || []).forEach((p) => {
+      if (p.all_sites_checked && p.all_sites_checked_by) {
+        const raw = (p.all_sites_checked_by || '').trim();
+        if (!raw) return;
+        const key = raw.toLowerCase();
+        completedByCounts[key] = (completedByCounts[key] || 0) + 1;
+      }
+    });
+
+    const hasCompletionData = Object.keys(completedByCounts).length > 0;
+
+    if (hasCompletionData) {
+      let entries = Object.entries(completedByCounts).map(([rawKeyLower, count]) => {
+        // Find any original casing from monitoredPersonnel or matrix rows
+        const rawFromMatrixRow = matrix.rows.find(
+          (row) => (row.userName || '').trim().toLowerCase() === rawKeyLower
+        )?.userName;
+        const rawName = rawFromMatrixRow || rawKeyLower;
+        const display = normalizeDisplay(rawName);
+        return { rawName, display, count };
+      });
+
+      // Filter by chart user search (on display name)
+      if (chartUserSearch.trim()) {
+        const searchLower = chartUserSearch.toLowerCase();
+        entries = entries.filter(e => e.display && e.display.toLowerCase().includes(searchLower));
+      }
+
+      return entries
+        .sort((a, b) => b.count - a.count)
+        .map(e => {
+          const short = e.display.length > 20 ? e.display.substring(0, 20) + '...' : e.display;
+          return {
+            user: short,
+            portfolios: e.count,
+            fullName: e.display,
+            rawKey: e.rawName
+          };
+        });
+    }
+
+    // Fallback: original behavior based on matrix (issues) if no completion data is available
     let filteredRows = matrix.rows.filter(row => row.total > 0); // Only show users who have coverage
     
     // Filter by chart user search
@@ -428,7 +474,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
           rawKey: row.userName // Store raw key for matching
         };
       });
-  }, [matrix.rows, chartUserSearch]);
+  }, [matrix.rows, chartUserSearch, portfolios]);
 
   // Get detailed stats for selected user
   const selectedUserDetails = useMemo(() => {
@@ -612,7 +658,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               <option value="">All Hours</option>
               {Array.from({ length: 24 }, (_, i) => i).map(hour => (
                 <option key={hour} value={hour}>
-                  {hour}:00 {hour === new Date().getHours() ? '(Current)' : ''}
+                  {hour}:00 {hour === new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }) * 1 ? '(Current EST)' : ''}
                 </option>
               ))}
             </select>

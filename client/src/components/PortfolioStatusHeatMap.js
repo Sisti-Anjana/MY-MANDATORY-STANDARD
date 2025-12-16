@@ -2,12 +2,47 @@ import React, { useState, useEffect } from 'react';
 import { portfoliosAPI, issuesAPI, reservationAPI } from '../services/api';
 import ActionModal from './ActionModal';
 
+const APP_TIME_ZONE = 'America/New_York';
+
+const getAppCurrentHour = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      hour12: false,
+      timeZone: APP_TIME_ZONE,
+    }).formatToParts(new Date());
+    const hourPart = parts.find((p) => p.type === 'hour');
+    if (hourPart) {
+      const h = parseInt(hourPart.value, 10);
+      if (!Number.isNaN(h)) return h;
+    }
+  } catch (e) {
+    console.warn('PortfolioStatusHeatMap: fallback to local hour', e);
+  }
+  return new Date().getHours();
+};
+
+const formatAppTime = (date) => {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: APP_TIME_ZONE,
+    }).format(date);
+  } catch (e) {
+    console.warn('PortfolioStatusHeatMap: fallback to local time', e);
+    return date.toLocaleTimeString();
+  }
+};
+
 const PortfolioStatusHeatMap = () => {
   const [portfolios, setPortfolios] = useState([]);
   const [issues, setIssues] = useState([]);
   const [activeReservations, setActiveReservations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentHour, setCurrentHour] = useState(new Date().getHours());
+  const [currentHour, setCurrentHour] = useState(getAppCurrentHour());
   const [lastRefresh, setLastRefresh] = useState(new Date());
   
   // Modal state
@@ -61,7 +96,7 @@ const PortfolioStatusHeatMap = () => {
 
     // Update current hour every minute
     const hourInterval = setInterval(() => {
-      setCurrentHour(new Date().getHours());
+      setCurrentHour(getAppCurrentHour());
     }, 60000);
 
     return () => {
@@ -212,7 +247,7 @@ const PortfolioStatusHeatMap = () => {
       
       {/* Last refresh time */}
       <p className="text-[10px] text-gray-400 mb-2">
-        Updated: {lastRefresh.toLocaleTimeString()}
+        Updated (EST): {formatAppTime(lastRefresh)}
       </p>
       
       {/* Legend and Controls */}
@@ -246,7 +281,7 @@ const PortfolioStatusHeatMap = () => {
         
         {/* Last refresh time */}
         <div className="text-[10px] text-gray-500">
-          Updated: {lastRefresh.toLocaleTimeString()}
+          Updated (EST): {formatAppTime(lastRefresh)}
         </div>
       </div>
 

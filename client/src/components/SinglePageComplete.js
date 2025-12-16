@@ -10,14 +10,52 @@ import AdminPanel from './AdminPanel';
 import IssueDetailsView from './IssueDetailsView';
 import PortfolioHourSessionDrawer from './PortfolioHourSessionDrawer';
 
+// Global application time zone (all users see times in EST)
+const APP_TIME_ZONE = 'America/New_York';
+
+// Get current hour in app time zone (0-23)
+function getAppCurrentHour() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      hour12: false,
+      timeZone: APP_TIME_ZONE,
+    }).formatToParts(new Date());
+    const hourPart = parts.find((p) => p.type === 'hour');
+    if (hourPart) {
+      const h = parseInt(hourPart.value, 10);
+      if (!Number.isNaN(h)) return h;
+    }
+  } catch (e) {
+    console.warn('Failed to compute app time zone hour, falling back to local time:', e);
+  }
+  return new Date().getHours();
+}
+
+// Format a Date in app time zone as HH:MM:SS
+function formatAppTime(date) {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: APP_TIME_ZONE,
+    }).format(date);
+  } catch (e) {
+    console.warn('Failed to format time in app time zone, falling back to local:', e);
+    return date.toLocaleTimeString();
+  }
+}
+
 const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [portfolios, setPortfolios] = useState([]);
   const [issues, setIssues] = useState([]);
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentHour, setCurrentHour] = useState(new Date().getHours());
-  const [lastCheckedHour, setLastCheckedHour] = useState(new Date().getHours());
+  const [currentHour, setCurrentHour] = useState(getAppCurrentHour());
+  const [lastCheckedHour, setLastCheckedHour] = useState(getAppCurrentHour());
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingIssue, setEditingIssue] = useState(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -245,7 +283,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     fetchActiveReservations();
     
     const interval = setInterval(() => {
-      const newHour = new Date().getHours();
+      const newHour = getAppCurrentHour();
       setCurrentHour(newHour);
       
       // Check if hour has changed - if so, reset all "all_sites_checked" statuses AND release all locks
@@ -650,13 +688,34 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         .update({
           all_sites_checked: false,
           all_sites_checked_hour: null,
-          all_sites_checked_date: null
+          all_sites_checked_date: null,
+          all_sites_checked_by: null
         })
         .neq('portfolio_id', '00000000-0000-0000-0000-000000000000'); // Update all records
       
       if (error) {
-        console.error('❌ Error resetting sites checked status:', error);
-        return;
+        // If all_sites_checked_by column is missing, retry without it
+        if (error.message && error.message.includes('all_sites_checked_by')) {
+          console.warn(
+            'all_sites_checked_by column not found while resetting. ' +
+            'Run ADD_ALL_SITES_CHECKED_BY_FIELD.sql to fully enable this feature.'
+          );
+          const { error: retryError } = await supabase
+            .from('portfolios')
+            .update({
+              all_sites_checked: false,
+              all_sites_checked_hour: null,
+              all_sites_checked_date: null
+            })
+            .neq('portfolio_id', '00000000-0000-0000-0000-000000000000');
+          if (retryError) {
+            console.error('❌ Error resetting sites checked status (retry):', retryError);
+            return;
+          }
+        } else {
+          console.error('❌ Error resetting sites checked status:', error);
+          return;
+        }
       }
       
       // Update local state
@@ -665,7 +724,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           ...p,
           all_sites_checked: false,
           all_sites_checked_hour: null,
-          all_sites_checked_date: null
+          all_sites_checked_date: null,
+          all_sites_checked_by: null
         }))
       );
       
@@ -803,10 +863,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       }
       
       // Prepare update data
+      const loggedInUserForComplete =
+        (sessionStorage.getItem('username') || sessionStorage.getItem('fullName') || '').trim() || null;
       const updateData = {
         all_sites_checked: value,
         all_sites_checked_hour: value ? currentHour : null,
-        all_sites_checked_date: value ? today : null
+        all_sites_checked_date: value ? today : null,
+        all_sites_checked_by: value ? loggedInUserForComplete : null
       };
       
       // If "No" is selected, preserve existing text or save new text
@@ -830,17 +893,20 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         .eq('portfolio_id', portfolioId);
 
       if (error) {
-        // If error is about missing sites_checked_details column, try without it
-        if (error.message && error.message.includes('sites_checked_details') && error.message.includes('schema cache')) {
-          console.warn('sites_checked_details column not found, updating without it');
-          const updateDataWithoutDetails = {
-            all_sites_checked: value,
-            all_sites_checked_hour: value ? currentHour : null,
-            all_sites_checked_date: value ? today : null
-          };
+        // If error is about missing sites_checked_details or all_sites_checked_by column, try without it
+        const msg = error.message || '';
+        if (
+          (msg.includes('sites_checked_details') || msg.includes('all_sites_checked_by')) &&
+          msg.includes('schema cache')
+        ) {
+          console.warn(
+            'sites_checked_details or all_sites_checked_by column not found, updating without them. ' +
+            'Run ADD_ALL_SITES_CHECKED_BY_FIELD.sql to enable per-user completion tracking.'
+          );
+          const { sites_checked_details, all_sites_checked_by, ...fallbackUpdate } = updateData;
           const { error: retryError } = await supabase
             .from('portfolios')
-            .update(updateDataWithoutDetails)
+            .update(fallbackUpdate)
             .eq('portfolio_id', portfolioId);
           if (retryError) throw retryError;
         } else {
@@ -856,6 +922,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 all_sites_checked: value,
                 all_sites_checked_hour: value ? currentHour : null,
                 all_sites_checked_date: value ? today : null,
+                all_sites_checked_by: value ? loggedInUserForComplete : null,
                 sites_checked_details: value ? null : (sitesCheckedText.trim() || p.sites_checked_details || null)
               }
             : p
@@ -1906,7 +1973,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             </button>
             
             <div className="text-center px-4 py-2 rounded" style={{ backgroundColor: '#E8F5E0' }}>
-              <div className="text-xs text-gray-600">Current Hour</div>
+              <div className="text-xs text-gray-600">Current Hour (EST)</div>
               <div className="text-2xl font-bold" style={{ color: '#76AB3F' }}>{currentHour}</div>
             </div>
           </div>
@@ -1975,7 +2042,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">Quick Portfolio Reference</h2>
                   <p className="text-xs text-gray-500 mt-1">
-                    Last updated: {lastRefresh.toLocaleTimeString()} (Auto-refreshes every 3s for real-time sync)
+                    Last updated (EST): {formatAppTime(lastRefresh)} (Auto-refreshes every 15s for real-time sync)
                     {isAutoRefreshing && <span className="ml-2 text-blue-600">🔄 Refreshing...</span>}
                   </p>
                   <div className="flex gap-6 mt-2 text-xs">

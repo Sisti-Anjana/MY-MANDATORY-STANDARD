@@ -292,8 +292,9 @@ const PortfolioHourSessionDrawer = ({
                   value={newRow.issue_details}
                   onChange={handleNewRowChange}
                   onKeyDown={(e) => {
-                    // Allow Enter key to submit the form (but allow Shift+Enter for new line)
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    // If Issue Present is "No", allow Enter to submit without clicking Add.
+                    // For "Yes", Enter just adds a new line; user must click Add explicitly.
+                    if (e.key === 'Enter' && !e.shiftKey && newRow.issue_present === 'No') {
                       e.preventDefault();
                       handleAddIssue();
                     }

@@ -45,6 +45,26 @@ const formatDate = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const APP_TIME_ZONE = 'America/New_York';
+
+const getAppCurrentHour = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      hour12: false,
+      timeZone: APP_TIME_ZONE,
+    }).formatToParts(new Date());
+    const hourPart = parts.find((p) => p.type === 'hour');
+    if (hourPart) {
+      const h = parseInt(hourPart.value, 10);
+      if (!Number.isNaN(h)) return h;
+    }
+  } catch (e) {
+    console.warn('IssueDetailsView: fallback to local hour', e);
+  }
+  return new Date().getHours();
+};
+
 const getQuickRange = (key) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -97,7 +117,7 @@ const IssueDetailsView = ({
   const [selectedHour, setSelectedHour] = useState(
     initialHour !== null && initialHour !== undefined
       ? String(initialHour)
-      : ''
+      : String(getAppCurrentHour())
   );
   const [activeRange, setActiveRange] = useState('today');
   const [searchQuery, setSearchQuery] = useState('');

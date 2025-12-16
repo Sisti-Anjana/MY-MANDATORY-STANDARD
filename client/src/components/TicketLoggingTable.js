@@ -1137,6 +1137,14 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   name="issue_details"
                   value={formData.issue_details}
                   onChange={handleFormChange}
+                  onKeyDown={(e) => {
+                    // If Issue Present is "No", allow Enter to submit without clicking the Add button.
+                    // Use Shift+Enter to avoid accidental submission if user really wants a newline (even though it's a text input).
+                    if (e.key === 'Enter' && !e.shiftKey && formData.issue_present === 'No') {
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
                   placeholder="Select issue present first"
                   disabled={!formData.issue_present}
                   className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"

@@ -1,13 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { portfoliosAPI, issuesAPI } from '../services/api';
 
+const APP_TIME_ZONE = 'America/New_York';
+
+const getAppCurrentHour = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      hour12: false,
+      timeZone: APP_TIME_ZONE,
+    }).formatToParts(new Date());
+    const hourPart = parts.find((p) => p.type === 'hour');
+    if (hourPart) {
+      const h = parseInt(hourPart.value, 10);
+      if (!Number.isNaN(h)) return h;
+    }
+  } catch (e) {
+    console.warn('SinglePage: fallback to local hour', e);
+  }
+  return new Date().getHours();
+};
+
 const SinglePage = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [portfolios, setPortfolios] = useState([]);
   const [issues, setIssues] = useState([]);
   const [filteredIssues, setFilteredIssues] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentHour, setCurrentHour] = useState(new Date().getHours());
+  const [currentHour, setCurrentHour] = useState(getAppCurrentHour());
   
   // Form state
   const [formData, setFormData] = useState({
@@ -31,7 +51,7 @@ const SinglePage = () => {
     fetchData();
     // Update current hour every minute
     const interval = setInterval(() => {
-      setCurrentHour(new Date().getHours());
+      setCurrentHour(getAppCurrentHour());
     }, 60000);
     return () => clearInterval(interval);
   }, []);
