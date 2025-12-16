@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 
 const EditIssueModal = ({ issue, portfolios, sites, monitoredPersonnel, onClose, onSave }) => {

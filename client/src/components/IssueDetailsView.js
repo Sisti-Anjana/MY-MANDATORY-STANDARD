@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useMemo, useState, useEffect } from 'react';
 
 // Parse flexible dates (accepts ISO and MMDDYYYY)

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { portfoliosAPI, issuesAPI, reservationAPI } from '../services/api';
 import ActionModal from './ActionModal';

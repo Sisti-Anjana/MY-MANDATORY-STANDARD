@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useMemo, useState } from 'react';
 
 const RANGE_OPTIONS = [

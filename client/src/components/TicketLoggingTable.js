@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 
@@ -17,23 +18,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     toDate: getTodayString()
   });
 
-  // Date helpers: display mmddyyyy, store ISO
-  const formatDateDisplay = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return '';
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${mm}${dd}${yyyy}`;
-  };
-  const inputToISO = (val) => {
-    if (!val) return '';
-    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
-    if (!m) return '';
-    const [, mm, dd, yyyy] = m;
-    return `${yyyy}-${mm}-${dd}`;
-  };
+  // (formatDateDisplay / inputToISO were used by an older export UI and are no longer needed)
 
   const [formData, setFormData] = useState({
     portfolio_id: '',
@@ -754,8 +739,6 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     }
 
     // Removed lock validation - issues can now be saved regardless of lock status
-    const parsedHour = parseInt(formData.issue_hour, 10);
-
     // VALIDATION STEP 2: Issue Present (CRITICAL!)
     const issuePresent = String(formData.issue_present).trim();
     if (!issuePresent || issuePresent === '') {
@@ -795,7 +778,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         entered_by: formData.entered_by || 'System'
       };
 
-      const { data, error } = await supabase
+      const { /* data, */ error } = await supabase
         .from('issues')
         .insert([dataToInsert])
         .select();

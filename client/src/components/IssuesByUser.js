@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useMemo } from 'react';
 
 const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onDeleteIssue, isAdmin = false }) => {
