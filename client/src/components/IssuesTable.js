@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { issuesAPI, portfoliosAPI } from '../services/api';
 import EditIssueModal from './EditIssueModal';
+import { convertToEST } from '../utils/dateUtils';
 
 const IssuesTable = () => {
   const [issues, setIssues] = useState([]);
@@ -19,7 +20,7 @@ const IssuesTable = () => {
   const [showEditModal, setShowEditModal] = useState(false);
 
   const monitoredPersonnel = [
-    "Kumar S", "Rajesh K", "Bharat Gu", "Anita P", "Deepa L", 
+    "Kumar S", "Rajesh K", "Bharat Gu", "Anita P", "Deepa L",
     "Manoj D", "Vikram N", "Ravi T", "Lakshmi B",
     "BXJBSA", "utfzytf", "76tyjtv", "HJVXHASV", "kinny"
   ];
@@ -51,7 +52,7 @@ const IssuesTable = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
+    return convertToEST(dateString).toLocaleString('en-US', { timeZone: 'America/New_York' });
   };
 
   const handleEditIssue = (issue) => {
@@ -91,7 +92,7 @@ const IssuesTable = () => {
     if (filter.portfolio && issue.portfolio_name !== filter.portfolio) return false;
     if (filter.hour && issue.issue_hour.toString() !== filter.hour) return false;
     if (filter.issuePresent && issue.issue_present !== filter.issuePresent) return false;
-    
+
     // Apply search text filter if any
     if (filter.searchText) {
       const searchLower = filter.searchText.toLowerCase();
@@ -103,15 +104,15 @@ const IssuesTable = () => {
         issue.issues_missed_by || '',
         issue.issue_hour?.toString() || ''
       ];
-      
+
       // Check if any field contains the search text
-      if (!searchableFields.some(field => 
+      if (!searchableFields.some(field =>
         field.toLowerCase().includes(searchLower)
       )) {
         return false;
       }
     }
-    
+
     return true;
   });
 
@@ -174,11 +175,11 @@ const IssuesTable = () => {
               className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 pr-12 sm:text-sm border-gray-300 rounded-md py-2"
               placeholder="Search issues..."
               value={filter.searchText}
-              onChange={(e) => setFilter({...filter, searchText: e.target.value})}
+              onChange={(e) => setFilter({ ...filter, searchText: e.target.value })}
             />
             {filter.searchText && (
               <button
-                onClick={() => setFilter({...filter, searchText: ''})}
+                onClick={() => setFilter({ ...filter, searchText: '' })}
                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -188,7 +189,7 @@ const IssuesTable = () => {
             )}
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -199,14 +200,14 @@ const IssuesTable = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Hour Filter
             </label>
             <select
               value={filter.hour}
-              onChange={(e) => setFilter({...filter, hour: e.target.value})}
+              onChange={(e) => setFilter({ ...filter, hour: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
             >
               <option value="">All Hours</option>
@@ -221,7 +222,7 @@ const IssuesTable = () => {
               <input
                 type="checkbox"
                 checked={filter.issuePresent === 'Yes'}
-                onChange={(e) => setFilter({...filter, issuePresent: e.target.checked ? 'Yes' : ''})}
+                onChange={(e) => setFilter({ ...filter, issuePresent: e.target.checked ? 'Yes' : '' })}
                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
               />
               <span className="ml-2 text-sm text-gray-700">Show All Issues</span>
@@ -290,11 +291,10 @@ const IssuesTable = () => {
                     {issue.issue_hour}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                      issue.issue_present?.toString().toLowerCase() === 'yes' 
-                        ? 'bg-red-100 text-red-800' 
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${issue.issue_present?.toString().toLowerCase() === 'yes'
+                        ? 'bg-red-100 text-red-800'
                         : 'bg-green-100 text-green-800'
-                    }`}>
+                      }`}>
                       {issue.issue_present?.toString().toLowerCase() === 'yes' ? 'Yes' : 'No'}
                     </span>
                   </td>
@@ -314,7 +314,7 @@ const IssuesTable = () => {
                     {issue.issues_missed_by || '-'}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <button 
+                    <button
                       onClick={() => handleEditIssue(issue)}
                       className="text-blue-600 hover:text-blue-900 mr-3"
                     >

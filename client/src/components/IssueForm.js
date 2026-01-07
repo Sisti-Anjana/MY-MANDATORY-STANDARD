@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { portfoliosAPI, issuesAPI, reservationAPI } from '../services/api';
+import { convertToEST } from '../utils/dateUtils';
 
 const IssueForm = () => {
   const [formData, setFormData] = useState({
@@ -39,39 +40,39 @@ const IssueForm = () => {
     const fetchUsers = () => {
       const storedUsers = localStorage.getItem('monitoredPersonnel');
       let usersList = [];
-      
+
       if (storedUsers) {
         usersList = JSON.parse(storedUsers);
       } else {
         // Default users if none exist
         usersList = [
-          'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L', 
+          'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L',
           'jenny', 'Kumar S', 'Lakshmi B', 'Manoj D', 'Rajesh K',
           'Ravi T', 'Vikram N'
         ];
       }
-      
+
       // CRITICAL FIX: Add logged-in user to the list if not present
-      const loggedInUser = sessionStorage.getItem('username') || 
-                          sessionStorage.getItem('fullName');
-      
+      const loggedInUser = sessionStorage.getItem('username') ||
+        sessionStorage.getItem('fullName');
+
       if (loggedInUser && !usersList.includes(loggedInUser)) {
         console.log('✅ Adding logged-in user to monitored personnel list:', loggedInUser);
         usersList.unshift(loggedInUser); // Add to beginning of list
       }
-      
+
       setUsers(usersList);
     };
 
     // AUTO-POPULATE MONITORED_BY WITH LOGGED-IN USER
     const autoSetMonitoredBy = () => {
       // Get logged-in user from sessionStorage
-      const loggedInUser = sessionStorage.getItem('username') || 
-                          sessionStorage.getItem('fullName') || 
-                          'LibsysAdmin'; // Fallback default
-      
+      const loggedInUser = sessionStorage.getItem('username') ||
+        sessionStorage.getItem('fullName') ||
+        'LibsysAdmin'; // Fallback default
+
       console.log('👤 Auto-setting monitored_by to:', loggedInUser);
-      
+
       // Set the monitored_by field automatically
       setFormData(prev => ({
         ...prev,
@@ -86,17 +87,17 @@ const IssueForm = () => {
 
   // FIX 1: Reset form fields when portfolio changes (but preserve monitored_by)
   const [prevPortfolioId, setPrevPortfolioId] = useState('');
-  
+
   useEffect(() => {
     // Only reset if portfolio actually changed (not initial load)
     if (formData.portfolio_id && formData.portfolio_id !== prevPortfolioId && prevPortfolioId !== '') {
       console.log('Portfolio changed from', prevPortfolioId, 'to', formData.portfolio_id);
-      
+
       // Get logged-in user to preserve
-      const loggedInUser = sessionStorage.getItem('username') || 
-                          sessionStorage.getItem('fullName') || 
-                          'LibsysAdmin';
-      
+      const loggedInUser = sessionStorage.getItem('username') ||
+        sessionStorage.getItem('fullName') ||
+        'LibsysAdmin';
+
       setFormData(prev => ({
         ...prev,
         monitored_by: loggedInUser, // Preserve logged-in user
@@ -132,21 +133,21 @@ const IssueForm = () => {
   useEffect(() => {
     const createReservation = async () => {
       const { portfolio_id, issue_hour, monitored_by } = formData;
-      
+
       if (portfolio_id && issue_hour !== '' && monitored_by) {
         try {
           setReservationError(null);
           setCheckingReservation(true);
-          
+
           // First check if it's reserved
           const checkResponse = await reservationAPI.check(portfolio_id, issue_hour, monitored_by);
-          
+
           if (checkResponse.data.reserved && !checkResponse.data.is_yours) {
             setReservationError('This slot is currently reserved by another user');
             alert('This portfolio/hour/monitor combination is currently being used by another user. Please select a different combination.');
             return;
           }
-          
+
           // Create/update reservation
           const response = await reservationAPI.reserve({
             portfolio_id,
@@ -175,7 +176,7 @@ const IssueForm = () => {
   useEffect(() => {
     const checkAvailability = async () => {
       const { portfolio_id, issue_hour, monitored_by } = formData;
-      
+
       if (portfolio_id && issue_hour !== '' && monitored_by) {
         try {
           const response = await reservationAPI.check(portfolio_id, issue_hour, monitored_by);
@@ -201,22 +202,22 @@ const IssueForm = () => {
       // DEBUG: Log what we're about to submit
       console.log('🚀 Submitting issue with data:', formData);
       console.log('📋 Portfolio ID being submitted:', formData.portfolio_id);
-      
+
       const response = await issuesAPI.create(formData);
       console.log('✅ Issue created successfully:', response);
       console.log('💾 Saved issue data:', response.data);
-      
+
       setSubmitted(true);
-      
+
       // Clear reservation state
       setReservation(null);
       setReservationError(null);
-      
+
       // Get logged-in user to preserve after reset
-      const loggedInUser = sessionStorage.getItem('username') || 
-                          sessionStorage.getItem('fullName') || 
-                          'LibsysAdmin';
-      
+      const loggedInUser = sessionStorage.getItem('username') ||
+        sessionStorage.getItem('fullName') ||
+        'LibsysAdmin';
+
       setFormData({
         portfolio_id: '',
         issue_hour: '',
@@ -239,12 +240,12 @@ const IssueForm = () => {
     setSubmitted(false);
     setReservation(null);
     setReservationError(null);
-    
+
     // Get logged-in user to preserve after reset
-    const loggedInUser = sessionStorage.getItem('username') || 
-                        sessionStorage.getItem('fullName') || 
-                        'LibsysAdmin';
-    
+    const loggedInUser = sessionStorage.getItem('username') ||
+      sessionStorage.getItem('fullName') ||
+      'LibsysAdmin';
+
     setFormData({
       portfolio_id: '',
       issue_hour: '',
@@ -297,7 +298,7 @@ const IssueForm = () => {
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">Log New Issue</h2>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Portfolio Dropdown */}
@@ -471,7 +472,7 @@ const IssueForm = () => {
               <input
                 type="text"
                 id="date_time"
-                value={new Date().toLocaleString()}
+                value={convertToEST(new Date()).toLocaleString('en-US', { timeZone: 'America/New_York' })}
                 disabled
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-600 text-sm"
               />

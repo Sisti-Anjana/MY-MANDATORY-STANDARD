@@ -3,8 +3,8 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
 // Use production database if USE_SUPABASE is true or NODE_ENV is production
-const db = (process.env.USE_SUPABASE === 'true' || process.env.NODE_ENV === 'production') 
-  ? require('./database-production') 
+const db = (process.env.USE_SUPABASE === 'true' || process.env.NODE_ENV === 'production')
+  ? require('./database-production')
   : require('./database');
 
 const app = express();
@@ -61,7 +61,7 @@ app.get('/api/portfolios', (req, res) => {
 // Add new portfolio (for admin)
 app.post('/api/portfolios', (req, res) => {
   const { name } = req.body;
-  
+
   if (!name) {
     res.status(400).json({ error: 'Portfolio name is required' });
     return;
@@ -70,13 +70,13 @@ app.post('/api/portfolios', (req, res) => {
   db.run(
     'INSERT INTO portfolios (name) VALUES (?)',
     [name],
-    function(err) {
+    function (err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ 
-        id: this.lastID, 
+      res.json({
+        id: this.lastID,
         name: name,
         message: 'Portfolio created successfully'
       });
@@ -87,8 +87,8 @@ app.post('/api/portfolios', (req, res) => {
 // Delete portfolio
 app.delete('/api/portfolios/:id', (req, res) => {
   const { id } = req.params;
-  
-  db.run('DELETE FROM portfolios WHERE id = ?', [id], function(err) {
+
+  db.run('DELETE FROM portfolios WHERE id = ?', [id], function (err) {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -100,7 +100,7 @@ app.delete('/api/portfolios/:id', (req, res) => {
 // Get portfolio status (all_sites_checked)
 app.get('/api/portfolios/:id/status', (req, res) => {
   const { id } = req.params;
-  
+
   db.get(
     'SELECT id, name, all_sites_checked, updated_at FROM portfolios WHERE id = ?',
     [id],
@@ -127,16 +127,16 @@ app.get('/api/portfolios/:id/status', (req, res) => {
 app.put('/api/portfolios/:id/status', (req, res) => {
   const { id } = req.params;
   const { all_sites_checked } = req.body;
-  
+
   if (typeof all_sites_checked !== 'boolean') {
     res.status(400).json({ error: 'all_sites_checked must be a boolean value' });
     return;
   }
-  
+
   db.run(
     'UPDATE portfolios SET all_sites_checked = ?, updated_at = datetime("now") WHERE id = ?',
     [all_sites_checked, id],
-    function(err) {
+    function (err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
@@ -145,7 +145,7 @@ app.put('/api/portfolios/:id/status', (req, res) => {
         res.status(404).json({ error: 'Portfolio not found' });
         return;
       }
-      res.json({ 
+      res.json({
         message: 'Portfolio status updated successfully',
         all_sites_checked: all_sites_checked
       });
@@ -189,7 +189,7 @@ app.get('/api/sites', (req, res) => {
 app.post('/api/issues', (req, res) => {
   const { portfolio_id, issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by } = req.body;
   const sessionId = req.sessionId;
-  
+
   if (!portfolio_id || !issue_hour) {
     res.status(400).json({ error: 'Portfolio and hour are required' });
     return;
@@ -212,12 +212,12 @@ app.post('/api/issues', (req, res) => {
   db.run(
     'INSERT INTO issues (portfolio_id, issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [portfolio_id, issue_hour, normalizedIssuePresent, issue_details || null, case_number || null, monitored_by || null, issues_missed_by || null],
-    function(err) {
+    function (err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
-      
+
       // Release the reservation after successful issue creation
       db.run(
         'DELETE FROM hour_reservations WHERE portfolio_id = ? AND issue_hour = ? AND monitored_by = ? AND session_id = ?',
@@ -228,9 +228,9 @@ app.post('/api/issues', (req, res) => {
           }
         }
       );
-      
-      res.json({ 
-        id: this.lastID, 
+
+      res.json({
+        id: this.lastID,
         message: 'Issue created successfully'
       });
     }
@@ -241,17 +241,17 @@ app.post('/api/issues', (req, res) => {
 app.put('/api/issues/:id', (req, res) => {
   const { id } = req.params;
   const { issue_hour, issue_present, issue_details, case_number, monitored_by, issues_missed_by } = req.body;
-  
+
   // Normalize issue_present to proper case (Yes or No)
   const normalizedIssuePresent = issue_present && issue_present.toString().toLowerCase() === 'yes' ? 'Yes' : 'No';
-  
+
   db.run(
     `UPDATE issues 
      SET issue_hour = ?, issue_present = ?, issue_details = ?, 
          case_number = ?, monitored_by = ?, issues_missed_by = ?
      WHERE id = ?`,
     [issue_hour, normalizedIssuePresent, issue_details, case_number, monitored_by, issues_missed_by, id],
-    function(err) {
+    function (err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
@@ -264,8 +264,8 @@ app.put('/api/issues/:id', (req, res) => {
 // Delete issue
 app.delete('/api/issues/:id', (req, res) => {
   const { id } = req.params;
-  
-  db.run('DELETE FROM issues WHERE id = ?', [id], function(err) {
+
+  db.run('DELETE FROM issues WHERE id = ?', [id], function (err) {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -277,7 +277,7 @@ app.delete('/api/issues/:id', (req, res) => {
 // Get all issues with portfolio info
 app.get('/api/issues', (req, res) => {
   const { search, portfolio_id } = req.query;
-  
+
   let query = `
     SELECT 
       i.*,
@@ -285,28 +285,28 @@ app.get('/api/issues', (req, res) => {
     FROM issues i
     JOIN portfolios p ON i.portfolio_id = p.id
   `;
-  
+
   const params = [];
   const conditions = [];
-  
+
   // Add search filter
   if (search) {
     conditions.push(`(p.name LIKE ? OR i.issue_details LIKE ? OR i.case_number LIKE ?)`);
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  
+
   // Add portfolio filter
   if (portfolio_id) {
     conditions.push('i.portfolio_id = ?');
     params.push(portfolio_id);
   }
-  
+
   if (conditions.length > 0) {
     query += ' WHERE ' + conditions.join(' AND ');
   }
-  
+
   query += ' ORDER BY i.created_at DESC';
-  
+
   db.all(query, params, (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
@@ -324,7 +324,7 @@ app.get('/api/issues', (req, res) => {
 // Get issues by specific portfolio
 app.get('/api/portfolios/:portfolioId/issues', (req, res) => {
   const { portfolioId } = req.params;
-  
+
   db.all(`
     SELECT 
       i.*,
@@ -351,8 +351,8 @@ app.get('/api/coverage', (req, res) => {
       return;
     }
 
-    // Get issues by hour with portfolio counts for today only
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    // Get issues by hour with portfolio counts for today only (EST)
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD format in EST
     db.all(`
       SELECT 
         issue_hour,
@@ -431,7 +431,7 @@ app.get('/api/users', (req, res) => {
 // Add new user
 app.post('/api/users', (req, res) => {
   const { name, role } = req.body;
-  
+
   if (!name || !role) {
     res.status(400).json({ error: 'Name and role are required' });
     return;
@@ -440,7 +440,7 @@ app.post('/api/users', (req, res) => {
   db.run(
     'INSERT INTO users (name, role) VALUES (?, ?)',
     [name, role],
-    function(err) {
+    function (err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
@@ -453,7 +453,7 @@ app.post('/api/users', (req, res) => {
 // Delete user
 app.delete('/api/users/:id', (req, res) => {
   const { id } = req.params;
-  db.run('DELETE FROM users WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM users WHERE id = ?', [id], function (err) {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -468,7 +468,7 @@ app.delete('/api/users/:id', (req, res) => {
 app.post('/api/reservations', (req, res) => {
   const { portfolio_id, issue_hour, monitored_by } = req.body;
   const sessionId = req.sessionId;
-  
+
   if (!portfolio_id || issue_hour === undefined || !monitored_by) {
     res.status(400).json({ error: 'Portfolio, hour, and monitored_by are required' });
     return;
@@ -494,7 +494,7 @@ app.post('/api/reservations', (req, res) => {
           db.run('DELETE FROM hour_reservations WHERE id = ?', [row.id]);
         } else if (row.session_id !== sessionId) {
           // Someone else has it reserved
-          res.status(409).json({ 
+          res.status(409).json({
             error: 'This combination is already reserved by another user',
             reserved: true
           });
@@ -509,7 +509,7 @@ app.post('/api/reservations', (req, res) => {
                 res.status(500).json({ error: err.message });
                 return;
               }
-              res.json({ 
+              res.json({
                 message: 'Reservation updated',
                 reservation_id: row.id,
                 session_id: sessionId
@@ -524,12 +524,12 @@ app.post('/api/reservations', (req, res) => {
       db.run(
         'INSERT OR REPLACE INTO hour_reservations (portfolio_id, issue_hour, monitored_by, session_id, expires_at) VALUES (?, ?, ?, ?, ?)',
         [portfolio_id, issue_hour, monitored_by, sessionId, expiresAt],
-        function(err) {
+        function (err) {
           if (err) {
             res.status(500).json({ error: err.message });
             return;
           }
-          res.json({ 
+          res.json({
             message: 'Reservation created',
             reservation_id: this.lastID,
             session_id: sessionId,
@@ -616,6 +616,25 @@ app.get('/api/reservations/all', (req, res) => {
   );
 });
 
+// Get ALL active reservations (for all users - for card highlighting)
+app.get('/api/admin/locks', (req, res) => {
+  db.all(
+    `SELECT r.*, p.name as portfolio_name 
+     FROM hour_reservations r
+     JOIN portfolios p ON r.portfolio_id = p.id
+     WHERE r.expires_at > datetime("now")
+     ORDER BY r.reserved_at DESC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
+
 // Release a reservation
 app.delete('/api/reservations/:id', (req, res) => {
   const { id } = req.params;
@@ -625,7 +644,7 @@ app.delete('/api/reservations/:id', (req, res) => {
   db.run(
     'DELETE FROM hour_reservations WHERE id = ? AND session_id = ?',
     [id, sessionId],
-    function(err) {
+    function (err) {
       if (err) {
         res.status(500).json({ error: err.message });
         return;

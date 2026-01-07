@@ -1,26 +1,6 @@
-/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { portfoliosAPI, issuesAPI } from '../services/api';
-
-const APP_TIME_ZONE = 'America/New_York';
-
-const getAppCurrentHour = () => {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: APP_TIME_ZONE,
-    }).formatToParts(new Date());
-    const hourPart = parts.find((p) => p.type === 'hour');
-    if (hourPart) {
-      const h = parseInt(hourPart.value, 10);
-      if (!Number.isNaN(h)) return h;
-    }
-  } catch (e) {
-    console.warn('SinglePage: fallback to local hour', e);
-  }
-  return new Date().getHours();
-};
+import { getCurrentESTHour, convertToEST, getCurrentESTDateString } from '../utils/dateUtils';
 
 const SinglePage = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -28,8 +8,8 @@ const SinglePage = () => {
   const [issues, setIssues] = useState([]);
   const [filteredIssues, setFilteredIssues] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentHour, setCurrentHour] = useState(getAppCurrentHour());
-  
+  const [currentHour, setCurrentHour] = useState(getCurrentESTHour());
+
   // Form state
   const [formData, setFormData] = useState({
     portfolio_id: '',
@@ -44,7 +24,7 @@ const SinglePage = () => {
   // Filter state for table view
   const [filters, setFilters] = useState({
     portfolio: '',
-    hour: '',    issuePresent: '',
+    hour: '', issuePresent: '',
     dateFilter: ''
   });
 
@@ -52,7 +32,7 @@ const SinglePage = () => {
     fetchData();
     // Update current hour every minute
     const interval = setInterval(() => {
-      setCurrentHour(getAppCurrentHour());
+      setCurrentHour(getCurrentESTHour());
     }, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -89,17 +69,19 @@ const SinglePage = () => {
     if (filters.issuePresent) {
       filtered = filtered.filter(i => i.issue_present === filters.issuePresent);
     }
-    
+
     setFilteredIssues(filtered);
   };
 
   // Get portfolio status for dashboard
   const getPortfolioStatus = (portfolioName) => {
-    const today = new Date().toDateString();
-    const portfolioIssues = issues.filter(issue => 
-      issue.portfolio_name === portfolioName &&
-      new Date(issue.created_at).toDateString() === today
-    );
+    const todayStr = getCurrentESTDateString(); // YYYY-MM-DD in EST
+    const portfolioIssues = issues.filter(issue => {
+      if (issue.portfolio_name !== portfolioName) return false;
+      const issueEST = convertToEST(issue.created_at);
+      const issueDateStr = `${issueEST.getFullYear()}-${String(issueEST.getMonth() + 1).padStart(2, '0')}-${String(issueEST.getDate()).padStart(2, '0')}`;
+      return issueDateStr === todayStr;
+    });
 
     if (portfolioIssues.length === 0) {
       return { status: 'No Activity (4h+)', color: 'bg-red-50 border-red-200', textColor: 'text-red-700' };
@@ -249,31 +231,28 @@ const SinglePage = () => {
           <div className="flex gap-8">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'dashboard'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'dashboard'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
+                }`}
             >
               Dashboard & Log Issues
             </button>
             <button
               onClick={() => setActiveTab('performance')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'performance'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'performance'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
+                }`}
             >
               Performance Analytics
             </button>
             <button
               onClick={() => setActiveTab('issues')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'issues'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'issues'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800 hover:border-gray-300'
+                }`}
             >
               Issues by User
             </button>
@@ -344,7 +323,7 @@ const SinglePage = () => {
             {/* Issue Log Form */}
             <div id="issue-log-form" className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Log New Issue</h2>
-              
+
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
@@ -458,7 +437,7 @@ const SinglePage = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Date/Time</label>
                     <input
                       type="text"
-                      value={new Date().toLocaleString()}
+                      value={convertToEST(new Date()).toLocaleString()}
                       disabled
                       className="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-gray-100 text-gray-600"
                     />
@@ -520,7 +499,7 @@ const SinglePage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Select Portfolio</label>
                   <select
                     value={filters.portfolio}
-                    onChange={(e) => setFilters({...filters, portfolio: e.target.value})}
+                    onChange={(e) => setFilters({ ...filters, portfolio: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">All Portfolios</option>
@@ -534,7 +513,7 @@ const SinglePage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hour</label>
                   <select
                     value={filters.hour}
-                    onChange={(e) => setFilters({...filters, hour: e.target.value})}
+                    onChange={(e) => setFilters({ ...filters, hour: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">All Hours</option>
@@ -620,11 +599,10 @@ const SinglePage = () => {
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.portfolio_name}</td>
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.issue_hour}</td>
                           <td className="px-4 py-3 text-sm">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                              (issue.issue_present || '').toLowerCase() === 'yes' 
-                                ? 'bg-red-100 text-red-800' 
-                                : 'bg-green-100 text-green-800'
-                            }`}>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${(issue.issue_present || '').toLowerCase() === 'yes'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-green-100 text-green-800'
+                              }`}>
                               {(issue.issue_present || '').toLowerCase() === 'yes' ? 'Yes' : 'No'}
                             </span>
                           </td>
@@ -634,7 +612,7 @@ const SinglePage = () => {
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.case_number || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-900">{issue.monitored_by || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-900">
-                            {new Date(issue.created_at).toLocaleString('en-US', {
+                            {convertToEST(issue.created_at).toLocaleString('en-US', {
                               year: 'numeric',
                               month: '2-digit',
                               day: '2-digit',

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { convertToEST } from '../utils/dateUtils';
 import { statsAPI, coverageAPI } from '../services/api';
 import PortfolioHeatMap from './PortfolioHeatMap';
 import PortfolioStatusHeatMap from './PortfolioStatusHeatMap';
@@ -19,7 +20,7 @@ const Dashboard = () => {
         statsAPI.getStats(),
         coverageAPI.getCoverage()
       ]);
-      
+
       setStats(statsResponse.data);
       setCoverage(coverageResponse.data);
       setLastRefresh(new Date());
@@ -64,7 +65,7 @@ const Dashboard = () => {
             Overview of your portfolio issue tracking system
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Last updated: {lastRefresh.toLocaleTimeString()} (Auto-refreshes every 30 seconds)
+            Last updated: {convertToEST(lastRefresh).toLocaleTimeString('en-US', { timeZone: 'America/New_York' })} (Auto-refreshes every 30 seconds)
           </p>
         </div>
       </div>
@@ -259,22 +260,22 @@ const Dashboard = () => {
 
       {/* Portfolio Coverage Heat Map */}
       {coverage && (
-        <PortfolioHeatMap 
-          coverageData={coverage.coverage_by_hour} 
-          totalPortfolios={coverage.total_portfolios} 
+        <PortfolioHeatMap
+          coverageData={coverage.coverage_by_hour}
+          totalPortfolios={coverage.total_portfolios}
         />
       )}
 
       {/* Issues Coverage Chart */}
       {coverage && (
-        <IssuesChart 
-          coverageData={coverage.coverage_by_hour} 
+        <IssuesChart
+          coverageData={coverage.coverage_by_hour}
         />
       )}
 
       {/* Action Modal */}
-      <ActionModal 
-        isOpen={showActionModal} 
+      <ActionModal
+        isOpen={showActionModal}
         onClose={() => setShowActionModal(false)}
         title={modalTitle}
       />

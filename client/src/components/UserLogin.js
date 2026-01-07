@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { convertToEST } from '../utils/dateUtils';
 
 const UserLogin = ({ onLoginSuccess, onSwitchToAdmin }) => {
   const [username, setUsername] = useState('');
@@ -71,7 +72,7 @@ const UserLogin = ({ onLoginSuccess, onSwitchToAdmin }) => {
       // Update last login time
       await supabase
         .from('users')
-        .update({ last_login: new Date().toISOString() })
+        .update({ last_login: convertToEST(new Date()).toISOString() })
         .eq('user_id', data.user_id);
 
       // Store user info in sessionStorage

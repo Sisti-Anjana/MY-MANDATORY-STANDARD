@@ -1,5 +1,5 @@
-/* eslint-disable */
 import React, { useMemo, useState } from 'react';
+import { getNewYorkDate, getCurrentESTDateString, convertToEST } from '../utils/dateUtils';
 
 const RANGE_OPTIONS = [
   { value: 'today', label: 'Today' },
@@ -45,7 +45,7 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
   };
 
   const rangeConfig = useMemo(() => {
-    const now = new Date();
+    const now = getNewYorkDate();
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
@@ -112,10 +112,10 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
     });
 
     // Find peak and lowest coverage hours
-    const peakHour = hourlyCoverage.reduce((max, current) => 
+    const peakHour = hourlyCoverage.reduce((max, current) =>
       current.coverage > max.coverage ? current : max
     );
-    const lowestHour = hourlyCoverage.reduce((min, current) => 
+    const lowestHour = hourlyCoverage.reduce((min, current) =>
       current.coverage < min.coverage ? current : min
     );
 
@@ -171,12 +171,12 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
       const portfolioName = resolvePortfolioName(issue, portfolios);
       if (portfolioName && portfolioName !== 'Unknown') {
         bucket.portfolios.add(portfolioName); // For display
-        
+
         // Store issue with time for visit detection
         if (!bucket.portfolioIssues) {
           bucket.portfolioIssues = [];
         }
-        const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+        const issueTime = issue.created_at ? convertToEST(issue.created_at) : getNewYorkDate();
         bucket.portfolioIssues.push({
           portfolio: portfolioName,
           time: issueTime
@@ -332,11 +332,10 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
             <button
               key={option.value}
               onClick={() => setRange(option.value)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
-                range === option.value
-                  ? 'bg-green-600 text-white border-green-600 shadow-sm'
-                  : 'bg-white border-gray-200 text-gray-600 hover:border-green-400 hover:text-green-600'
-              }`}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${range === option.value
+                ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-green-400 hover:text-green-600'
+                }`}
             >
               {option.label}
             </button>
@@ -372,8 +371,7 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
               onClick={() => {
                 // If no dates set, default to today
                 if (!customStart || !customEnd) {
-                  const today = new Date();
-                  const iso = today.toISOString().split('T')[0];
+                  const iso = getCurrentESTDateString();
                   setCustomStart(iso);
                   setCustomEnd(iso);
                 }
@@ -384,8 +382,7 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
             </button>
             <button
               onClick={() => {
-                const today = new Date();
-                const iso = today.toISOString().split('T')[0];
+                const iso = getCurrentESTDateString();
                 setCustomStart(iso);
                 setCustomEnd(iso);
               }}
@@ -485,29 +482,29 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
               <p className="text-xs text-gray-500 mt-0.5">Leaders by coverage and findings</p>
             </div>
             <div className="p-5 space-y-6">
-              <LeaderboardBlock 
-                label="Most Total Portfolios Monitored" 
-                items={analytics.leaderboard.coverage} 
-                metricKey="portfoliosCount" 
+              <LeaderboardBlock
+                label="Most Total Portfolios Monitored"
+                items={analytics.leaderboard.coverage}
+                metricKey="portfoliosCount"
                 fallback="No data"
                 onItemClick={setSelectedPerformer}
                 allUserStats={analytics.perUserStats}
               />
               <div className="border-t border-gray-200 pt-5">
-                <LeaderboardBlock 
-                  label="Most Active Issues" 
-                  items={analytics.leaderboard.issuesYes} 
-                  metricKey="issuesYes" 
+                <LeaderboardBlock
+                  label="Most Active Issues"
+                  items={analytics.leaderboard.issuesYes}
+                  metricKey="issuesYes"
                   fallback="No data"
                   onItemClick={setSelectedPerformer}
                   allUserStats={analytics.perUserStats}
                 />
               </div>
               <div className="border-t border-gray-200 pt-5">
-                <LeaderboardBlock 
-                  label="Most Monitoring Active Hours" 
-                  items={analytics.leaderboard.hours} 
-                  metricKey="hoursCount" 
+                <LeaderboardBlock
+                  label="Most Monitoring Active Hours"
+                  items={analytics.leaderboard.hours}
+                  metricKey="hoursCount"
                   fallback="No data"
                   onItemClick={setSelectedPerformer}
                   allUserStats={analytics.perUserStats}
@@ -540,7 +537,7 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
                     const link = document.createElement('a');
                     const url = URL.createObjectURL(blob);
                     link.setAttribute('href', url);
-                    link.setAttribute('download', `user-performance-${range}-${new Date().toISOString().split('T')[0]}.csv`);
+                    link.setAttribute('download', `user-performance-${range}-${getCurrentESTDateString()}.csv`);
                     link.style.visibility = 'hidden';
                     document.body.appendChild(link);
                     link.click();
@@ -571,8 +568,8 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
                   {analytics.perUserStats.map((u, idx) => (
-                    <tr 
-                      key={u.user} 
+                    <tr
+                      key={u.user}
                       className={`transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
                       style={{ '--hover-color': 'rgba(118, 171, 63, 0.1)' }}
                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(118, 171, 63, 0.1)'}
@@ -602,14 +599,13 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
-                          (u.missedAlerts || 0) === 0 
-                            ? 'text-white' 
-                            : (u.missedAlerts || 0) <= 3 
-                            ? 'bg-yellow-100 text-yellow-800' 
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${(u.missedAlerts || 0) === 0
+                          ? 'text-white'
+                          : (u.missedAlerts || 0) <= 3
+                            ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-red-100 text-red-800'
-                        }`}
-                        style={(u.missedAlerts || 0) === 0 ? { backgroundColor: '#76AB3F' } : {}}
+                          }`}
+                          style={(u.missedAlerts || 0) === 0 ? { backgroundColor: '#76AB3F' } : {}}
                         >
                           {u.missedAlerts || 0}
                         </span>
@@ -644,17 +640,16 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
                 </button>
               </div>
             </div>
-            
+
             <div className="p-4 space-y-3">
               {/* User Info Card */}
               <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold text-white ${
-                    selectedPerformer.rank === 1 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold text-white ${selectedPerformer.rank === 1 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
                     selectedPerformer.rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
-                    selectedPerformer.rank === 3 ? 'bg-gradient-to-br from-orange-300 to-orange-500' :
-                    'bg-gradient-to-br from-gray-400 to-gray-600'
-                  }`}>
+                      selectedPerformer.rank === 3 ? 'bg-gradient-to-br from-orange-300 to-orange-500' :
+                        'bg-gradient-to-br from-gray-400 to-gray-600'
+                    }`}>
                     {selectedPerformer.rank}
                   </div>
                   <div className="flex-1">
@@ -714,11 +709,10 @@ const PerformanceAnalytics = ({ issues, portfolios, userDisplayMap = {} }) => {
                       <p className="text-xs font-semibold text-purple-700 mb-1">Active Hours</p>
                       <p className="text-lg font-bold text-purple-900">{selectedPerformer.fullStats.hoursCount || 0}</p>
                     </div>
-                    <div className={`border rounded-lg p-2.5 ${
-                      (selectedPerformer.fullStats.missedAlerts || 0) === 0 
-                        ? 'bg-green-50 border-green-200' 
-                        : 'bg-orange-50 border-orange-200'
-                    }`}>
+                    <div className={`border rounded-lg p-2.5 ${(selectedPerformer.fullStats.missedAlerts || 0) === 0
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-orange-50 border-orange-200'
+                      }`}>
                       <p className={`text-xs font-semibold mb-1 ${(selectedPerformer.fullStats.missedAlerts || 0) === 0 ? 'text-green-700' : 'text-orange-700'}`}>Missed Alerts</p>
                       <p className={`text-lg font-bold ${(selectedPerformer.fullStats.missedAlerts || 0) === 0 ? 'text-green-900' : 'text-orange-900'}`}>
                         {selectedPerformer.fullStats.missedAlerts || 0}
@@ -785,7 +779,7 @@ const ProgressBar = ({ value, max, color }) => {
 
 const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', onItemClick, allUserStats }) => {
   const getMetricDescription = (metricKey) => {
-    switch(metricKey) {
+    switch (metricKey) {
       case 'portfoliosCount':
         return 'Total Portfolios Monitored';
       case 'issuesYes':
@@ -807,8 +801,8 @@ const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', 
             // Find complete user stats
             const fullUserStats = allUserStats?.find(u => u.user === item.user);
             return (
-              <div 
-                key={item.user} 
+              <div
+                key={item.user}
                 onClick={() => onItemClick && onItemClick({
                   user: item.user,
                   displayName: item.displayName || item.user,
@@ -818,30 +812,27 @@ const LeaderboardBlock = ({ label, items = [], metricKey, fallback = 'No data', 
                   metric: getMetricDescription(metricKey),
                   fullStats: fullUserStats
                 })}
-                className={`flex items-center justify-between py-2.5 px-3 rounded-lg transition-all cursor-pointer ${
-                  isTopThree 
-                    ? 'bg-gray-50 border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300' 
-                    : 'hover:bg-gray-50'
-                }`}
+                className={`flex items-center justify-between py-2.5 px-3 rounded-lg transition-all cursor-pointer ${isTopThree
+                  ? 'bg-gray-50 border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300'
+                  : 'hover:bg-gray-50'
+                  }`}
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-semibold flex-shrink-0 ${
-                    idx === 0 ? 'bg-green-100 text-green-700' :
+                  <div className={`w-6 h-6 rounded flex items-center justify-center text-xs font-semibold flex-shrink-0 ${idx === 0 ? 'bg-green-100 text-green-700' :
                     idx === 1 ? 'bg-blue-100 text-blue-700' :
-                    idx === 2 ? 'bg-purple-100 text-purple-700' :
-                    'bg-gray-100 text-gray-500'
-                  }`}>
+                      idx === 2 ? 'bg-purple-100 text-purple-700' :
+                        'bg-gray-100 text-gray-500'
+                    }`}>
                     {idx + 1}
                   </div>
                   <span className={`text-sm truncate ${isTopThree ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
                     {item.displayName || item.user}
                   </span>
                 </div>
-                <span className={`text-sm ml-3 flex-shrink-0 px-2.5 py-1 rounded ${
-                  isTopThree 
-                    ? 'font-bold text-gray-900 bg-white border border-gray-200' 
-                    : 'font-semibold text-gray-700'
-                }`}>
+                <span className={`text-sm ml-3 flex-shrink-0 px-2.5 py-1 rounded ${isTopThree
+                  ? 'font-bold text-gray-900 bg-white border border-gray-200'
+                  : 'font-semibold text-gray-700'
+                  }`}>
                   {item[metricKey]}
                 </span>
               </div>

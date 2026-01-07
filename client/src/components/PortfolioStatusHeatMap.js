@@ -1,51 +1,16 @@
-/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { portfoliosAPI, issuesAPI, reservationAPI } from '../services/api';
 import ActionModal from './ActionModal';
-
-const APP_TIME_ZONE = 'America/New_York';
-
-const getAppCurrentHour = () => {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: APP_TIME_ZONE,
-    }).formatToParts(new Date());
-    const hourPart = parts.find((p) => p.type === 'hour');
-    if (hourPart) {
-      const h = parseInt(hourPart.value, 10);
-      if (!Number.isNaN(h)) return h;
-    }
-  } catch (e) {
-    console.warn('PortfolioStatusHeatMap: fallback to local hour', e);
-  }
-  return new Date().getHours();
-};
-
-const formatAppTime = (date) => {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: APP_TIME_ZONE,
-    }).format(date);
-  } catch (e) {
-    console.warn('PortfolioStatusHeatMap: fallback to local time', e);
-    return date.toLocaleTimeString();
-  }
-};
+import { getCurrentESTHour, getCurrentESTDateString, convertToEST } from '../utils/dateUtils';
 
 const PortfolioStatusHeatMap = () => {
   const [portfolios, setPortfolios] = useState([]);
   const [issues, setIssues] = useState([]);
   const [activeReservations, setActiveReservations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentHour, setCurrentHour] = useState(getAppCurrentHour());
-  const [lastRefresh, setLastRefresh] = useState(new Date());
-  
+  const [currentHour, setCurrentHour] = useState(getCurrentESTHour());
+  const [lastRefresh, setLastRefresh] = useState(convertToEST(new Date()));
+
   // Modal state
   const [showActionModal, setShowActionModal] = useState(false);
   const [selectedPortfolio, setSelectedPortfolio] = useState(null);
@@ -59,12 +24,12 @@ const PortfolioStatusHeatMap = () => {
         issuesAPI.getAll(),
         reservationAPI.getActive().catch(() => ({ data: [] })) // Fetch active reservations, fallback to empty array
       ]);
-      
+
       // DEBUG: Log the data to see structure
       console.log('🔍 Portfolios data:', portfoliosResponse.data);
       console.log('🔍 Issues data:', issuesResponse.data);
       console.log('🔍 Active reservations:', reservationsResponse.data);
-      
+
       // Check first portfolio and issue for ID field names
       if (portfoliosResponse.data.length > 0) {
         console.log('📋 First portfolio:', portfoliosResponse.data[0]);
@@ -74,11 +39,11 @@ const PortfolioStatusHeatMap = () => {
         console.log('📋 First issue:', issuesResponse.data[0]);
         console.log('🔑 Issue ID fields:', Object.keys(issuesResponse.data[0]));
       }
-      
+
       setPortfolios(portfoliosResponse.data);
       setIssues(issuesResponse.data);
       setActiveReservations(reservationsResponse.data || []);
-      setLastRefresh(new Date());
+      setLastRefresh(convertToEST(new Date()));
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -97,7 +62,7 @@ const PortfolioStatusHeatMap = () => {
 
     // Update current hour every minute
     const hourInterval = setInterval(() => {
-      setCurrentHour(getAppCurrentHour());
+      setCurrentHour(getCurrentESTHour());
     }, 60000);
 
     return () => {
@@ -112,7 +77,7 @@ const PortfolioStatusHeatMap = () => {
       return (
         issue.portfolio_id === portfolioId &&
         issue.issue_hour === currentHour &&
-        issue.monitored_by && 
+        issue.monitored_by &&
         issue.monitored_by.trim() !== ''
       );
     });
@@ -130,8 +95,8 @@ const PortfolioStatusHeatMap = () => {
 
   // Check if portfolio is being logged (has active reservation)
   const isPortfolioBeingLogged = (portfolioId) => {
-    return activeReservations.some(reservation => 
-      reservation.portfolio_id === portfolioId && 
+    return activeReservations.some(reservation =>
+      reservation.portfolio_id === portfolioId &&
       reservation.issue_hour === currentHour
     );
   };
@@ -139,32 +104,28 @@ const PortfolioStatusHeatMap = () => {
   // Hours since last activity for a portfolio (based on hour difference, not time difference)
   // Uses currentHour - issue_hour to calculate the difference
   const getHoursSinceLastActivity = (portfolioId) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Filter issues for today only
     const portfolioIssues = issues.filter(issue => {
       if (issue.portfolio_id !== portfolioId) return false;
-      const issueDate = new Date(issue.created_at);
-      issueDate.setHours(0, 0, 0, 0);
-      return issueDate.getTime() === today.getTime();
+      const issueDate = convertToEST(issue.created_at);
+      const issueDateStr = `${issueDate.getFullYear()}-${String(issueDate.getMonth() + 1).padStart(2, '0')}-${String(issueDate.getDate()).padStart(2, '0')}`;
+      return issueDateStr === todayStr;
     });
-    
+
     if (portfolioIssues.length === 0) return Infinity; // Treat no activity as 4h+
-    
+
     // Sort by created_at to get the most recent issue
-    const sortedIssues = portfolioIssues.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const sortedIssues = portfolioIssues.sort((a, b) => convertToEST(b.created_at) - convertToEST(a.created_at));
     const latestIssue = sortedIssues[0];
-    
+
     // Calculate hour difference: currentHour - issue_hour
     const hoursDiff = currentHour - latestIssue.issue_hour;
-    
+
     // Handle negative hoursDiff (e.g., issue logged at hour 23, current hour is 0)
     // In this case, treat as if it's from previous day, so it's 4h+
     if (hoursDiff < 0) {
       return Infinity; // Previous day = 4h+
     }
-    
+
     return hoursDiff;
   };
 
@@ -175,28 +136,27 @@ const PortfolioStatusHeatMap = () => {
     // First check: Find the portfolio and check if all_sites_checked is true
     const portfolio = portfolios.find(p => (p.portfolio_id || p.id) === portfolioId);
     const allSitesChecked = portfolio?.all_sites_checked || false;
-    
+
     // If all_sites_checked is false, return false immediately (card won't be green)
     if (!allSitesChecked) {
       console.log(`🔒 Portfolio ${portfolioId} (${portfolio?.name}): all_sites_checked = FALSE - Card will NOT be green`);
       return false;
     }
-    
+
     // If all_sites_checked is true, check if there's an issue logged in the current hour
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
+    const todayStr = getCurrentESTDateString();
+
     // Filter issues for today only
     const todayIssues = issues.filter(issue => {
       if (issue.portfolio_id !== portfolioId) return false;
-      const issueDate = new Date(issue.created_at);
-      issueDate.setHours(0, 0, 0, 0);
-      return issueDate.getTime() === today.getTime();
+      const issueEST = convertToEST(issue.created_at);
+      const issueDateStr = `${issueEST.getFullYear()}-${String(issueEST.getMonth() + 1).padStart(2, '0')}-${String(issueEST.getDate()).padStart(2, '0')}`;
+      return issueDateStr === todayStr;
     });
-    
+
     // Check if any issue was logged in the current hour
     const result = todayIssues.some(issue => issue.issue_hour === currentHour);
-    
+
     console.log(`🎯 Portfolio ${portfolioId} (${portfolio?.name}): updated=${result} (all_sites_checked=${allSitesChecked}, currentHour=${currentHour})`);
     return result;
   };
@@ -245,44 +205,44 @@ const PortfolioStatusHeatMap = () => {
           </p>
         </div>
       </div>
-      
+
       {/* Last refresh time */}
       <p className="text-[10px] text-gray-400 mb-2">
-        Updated (EST): {formatAppTime(lastRefresh)}
+        Updated: {lastRefresh.toLocaleTimeString()}
       </p>
-      
+
       {/* Legend and Controls */}
       <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
         <div className="flex flex-wrap gap-2 text-xs">
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-red-200 rounded mr-1"></div>
-          <span className="text-gray-600">4h+</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-orange-200 rounded mr-1"></div>
-          <span className="text-gray-600">3h</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-yellow-200 rounded mr-1"></div>
-          <span className="text-gray-600">2h</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-gray-200 rounded mr-1"></div>
-          <span className="text-gray-600">1h</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded mr-1" style={{ backgroundColor: '#9333EA' }}></div>
-          <span className="text-gray-600">Logging</span>
-        </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-red-200 rounded mr-1"></div>
+            <span className="text-gray-600">4h+</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-orange-200 rounded mr-1"></div>
+            <span className="text-gray-600">3h</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-yellow-200 rounded mr-1"></div>
+            <span className="text-gray-600">2h</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-gray-200 rounded mr-1"></div>
+            <span className="text-gray-600">1h</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded mr-1" style={{ backgroundColor: '#9333EA' }}></div>
+            <span className="text-gray-600">Logging</span>
+          </div>
           <div className="flex items-center">
             <div className="w-3 h-3 rounded mr-1" style={{ backgroundColor: '#76AB3F' }}></div>
             <span className="text-gray-600">Updated</span>
           </div>
         </div>
-        
+
         {/* Last refresh time */}
         <div className="text-[10px] text-gray-500">
-          Updated (EST): {formatAppTime(lastRefresh)}
+          Updated: {lastRefresh.toLocaleTimeString()}
         </div>
       </div>
 
@@ -296,17 +256,17 @@ const PortfolioStatusHeatMap = () => {
           const beingLogged = isPortfolioBeingLogged(portfolioId);
           const statusText = beingLogged ? 'Logging Issue...' : getStatusText(hoursSince, updated);
           const currentUser = getUserForCurrentHour(portfolioId);
-          
+
           // Check if portfolio is locked by checking active reservations
           const isLocked = activeReservations.some(
-            res => String(res.portfolio_id) === String(portfolioId) || 
-                  String(res.portfolios?.portfolio_id) === String(portfolioId) ||
-                  String(res.portfolio?.portfolio_id) === String(portfolioId)
+            res => String(res.portfolio_id) === String(portfolioId) ||
+              String(res.portfolios?.portfolio_id) === String(portfolioId) ||
+              String(res.portfolio?.portfolio_id) === String(portfolioId)
           );
-          
+
           // Determine background color and text color
           let bgColor, textColor, inlineStyle = {};
-          
+
           if (isLocked) {
             // PRIORITY 1: Locked state (purple background)
             bgColor = '';
@@ -328,7 +288,7 @@ const PortfolioStatusHeatMap = () => {
             bgColor = colorClass;
             textColor = '';
           }
-          
+
           return (
             <div
               key={portfolioId}

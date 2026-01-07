@@ -1,6 +1,6 @@
-/* eslint-disable */
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { getCurrentESTDateString, convertToEST, getNewYorkDate } from '../utils/dateUtils';
 
 const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
   const [dateRange, setDateRange] = useState('today');
@@ -8,7 +8,7 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
   const [endDate, setEndDate] = useState('');
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
+    const d = convertToEST(dateStr);
     if (Number.isNaN(d.getTime())) return '';
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
@@ -24,54 +24,69 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
   };
 
   const chartData = useMemo(() => {
-    // Filter issues based on date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Filter issues based on date range (using EST)
+    const todayStr = getCurrentESTDateString();
+    const todayEST = convertToEST(todayStr);
 
     let filteredIssues = issues;
-    
+
     if (dateRange === 'today') {
       filteredIssues = issues.filter(issue => {
-        const issueDate = new Date(issue.created_at);
-        issueDate.setHours(0, 0, 0, 0);
-        return issueDate.getTime() === today.getTime();
+        const issueEST = convertToEST(issue.created_at);
+        const issueDateStr = `${issueEST.getFullYear()}-${String(issueEST.getMonth() + 1).padStart(2, '0')}-${String(issueEST.getDate()).padStart(2, '0')}`;
+        return issueDateStr === todayStr;
       });
     } else if (dateRange === 'week') {
-      const weekAgo = new Date(today);
+      const weekAgo = new Date(todayEST);
       weekAgo.setDate(weekAgo.getDate() - 7);
       filteredIssues = issues.filter(issue => {
-        const issueDate = new Date(issue.created_at);
+        const issueDate = convertToEST(issue.created_at);
         return issueDate >= weekAgo;
       });
     } else if (dateRange === 'month') {
-      const monthAgo = new Date(today);
+      const monthAgo = new Date(todayEST);
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       filteredIssues = issues.filter(issue => {
-        const issueDate = new Date(issue.created_at);
+        const issueDate = convertToEST(issue.created_at);
         return issueDate >= monthAgo;
       });
     } else if (dateRange === 'custom' && startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
       filteredIssues = issues.filter(issue => {
-        const issueDate = new Date(issue.created_at);
-        return issueDate >= start && issueDate <= end;
+        const issueEST = convertToEST(issue.created_at);
+        const issueDateStr = `${issueEST.getFullYear()}-${String(issueEST.getMonth() + 1).padStart(2, '0')}-${String(issueEST.getDate()).padStart(2, '0')}`;
+        return issueDateStr >= startDate && issueDateStr <= endDate;
       });
     }
 
     // Calculate coverage by hour
     const totalPortfolios = portfolios.length || 1; // Use actual portfolio count, avoid division by zero
+
+    // Helper to normalize hour
+    const normalizeHour = (h) => (h === null || h === undefined ? -1 : parseInt(h, 10));
+
     const hourlyData = Array.from({ length: 24 }, (_, hour) => {
+      // 1. Portfolios with an issue logged this hour (Yes or No)
       const hourIssues = filteredIssues.filter(issue => issue.issue_hour === hour);
-      const uniquePortfolios = new Set(hourIssues.map(issue => issue.portfolio_name));
+      const outputIdsFromIssues = new Set(hourIssues.map(issue => issue.portfolio_name));
+
+      // 2. Portfolios marked "All Sites Checked" for this hour
+      // ONLY apply this if we are looking at "Today" (since all_sites_checked is a current-state flag)
+      if (dateRange === 'today') {
+        portfolios.forEach(p => {
+          if (p.all_sites_checked && normalizeHour(p.all_sites_checked_hour) === hour) {
+            outputIdsFromIssues.add(p.name);
+          }
+        });
+      }
+
+      const uniquePortfolios = outputIdsFromIssues;
       const coverage = (uniquePortfolios.size / totalPortfolios) * 100;
-      
+
       return {
         hour: `${hour}:00`,
         coverage: Math.round(coverage * 10) / 10,
         portfoliosChecked: uniquePortfolios.size,
-        totalIssues: hourIssues.length
+        totalIssues: hourIssues.length // Still track raw issue count separately if needed
       };
     });
 
@@ -95,21 +110,21 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
   };
 
   const getDateRangeDisplay = () => {
-    const today = new Date();
+    const today = getNewYorkDate();
     if (dateRange === 'custom' && startDate && endDate) {
       return `${startDate} to ${endDate}`;
     } else if (dateRange === 'today') {
-      return today.toISOString().split('T')[0];
+      return getCurrentESTDateString();
     } else if (dateRange === 'week') {
       const weekAgo = new Date(today);
       weekAgo.setDate(weekAgo.getDate() - 7);
-      return `${weekAgo.toISOString().split('T')[0]} to ${today.toISOString().split('T')[0]}`;
+      return `${weekAgo.toISOString().split('T')[0]} to ${getCurrentESTDateString()}`;
     } else if (dateRange === 'month') {
       const monthAgo = new Date(today);
       monthAgo.setMonth(monthAgo.getMonth() - 1);
-      return `${monthAgo.toISOString().split('T')[0]} to ${today.toISOString().split('T')[0]}`;
+      return `${monthAgo.toISOString().split('T')[0]} to ${getCurrentESTDateString()}`;
     }
-    return today.toISOString().split('T')[0];
+    return getCurrentESTDateString();
   };
 
   return (
@@ -124,31 +139,28 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
         <div className="flex gap-2">
           <button
             onClick={() => setDateRange('today')}
-            className={`px-4 py-2 rounded text-sm font-medium ${
-              dateRange === 'today'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
+            className={`px-4 py-2 rounded text-sm font-medium ${dateRange === 'today'
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
           >
             Today
           </button>
           <button
             onClick={() => setDateRange('week')}
-            className={`px-4 py-2 rounded text-sm font-medium ${
-              dateRange === 'week'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
+            className={`px-4 py-2 rounded text-sm font-medium ${dateRange === 'week'
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
           >
             Week
           </button>
           <button
             onClick={() => setDateRange('month')}
-            className={`px-4 py-2 rounded text-sm font-medium ${
-              dateRange === 'month'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
+            className={`px-4 py-2 rounded text-sm font-medium ${dateRange === 'month'
+              ? 'bg-green-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
           >
             Month
           </button>
@@ -194,22 +206,22 @@ const HourlyCoverageChart = ({ issues, portfolios = [] }) => {
         <ResponsiveContainer width="100%" height={400}>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="hour" 
+            <XAxis
+              dataKey="hour"
               tick={{ fontSize: 12 }}
               interval={0}
               angle={-45}
               textAnchor="end"
               height={80}
             />
-            <YAxis 
+            <YAxis
               label={{ value: 'Coverage %', angle: -90, position: 'insideLeft' }}
               tick={{ fontSize: 12 }}
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="coverage" radius={[4, 4, 0, 0]}>
               {chartData.map((entry, index) => (
-                <Cell 
+                <Cell
                   key={`cell-${index}`}
                   fill={entry.coverage === 0 ? '#ef4444' : entry.coverage < 50 ? '#f59e0b' : '#76AB3F'}
                 />

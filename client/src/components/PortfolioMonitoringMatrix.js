@@ -1,6 +1,6 @@
-/* eslint-disable */
 import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
+import { getCurrentESTHour, getCurrentESTDateString, convertToEST } from '../utils/dateUtils';
 
 const getCellToneClass = (count, max) => {
   if (!count || max === 0) {
@@ -27,7 +27,7 @@ const getCellToneClass = (count, max) => {
 const buildDate = (value, isEnd = false) => {
   if (!value) return null;
 
-  const date = new Date(value);
+  const date = convertToEST(value);
   if (Number.isNaN(date.getTime())) return null;
 
   if (isEnd) {
@@ -40,14 +40,13 @@ const buildDate = (value, isEnd = false) => {
 };
 
 const getTodayString = () => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
+  return getCurrentESTDateString();
 };
 
 const getDateRange = (range) => {
-  const today = new Date();
+  const today = convertToEST(new Date());
   today.setHours(0, 0, 0, 0);
-  
+
   switch (range) {
     case 'today':
       return {
@@ -86,7 +85,7 @@ const getDateRange = (range) => {
 };
 
 const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPersonnel = [], userDisplayMap = {} }) => {
-  // Set default to today
+  // Set default to today (since data is typically from current day)
   const todayRange = getDateRange('today');
   const [startDate, setStartDate] = useState(todayRange.start);
   const [endDate, setEndDate] = useState(todayRange.end);
@@ -104,7 +103,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     const dd = String(d.getDate()).padStart(2, '0');
     const yyyy = d.getFullYear();
     return `${mm}${dd}${yyyy}`;
-    };
+  };
   const inputToISO = (val) => {
     if (!val) return '';
     const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
@@ -117,6 +116,55 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
   const [selectedUser, setSelectedUser] = useState(null); // Selected user for detailed view
   const [showCharts, setShowCharts] = useState(true);
 
+  // Timer ref for tooltip grace period
+  const closeTooltipTimer = React.useRef(null);
+
+  const handleCellMouseEnter = (e, row, hour) => {
+    // Clear any pending close timer
+    if (closeTooltipTimer.current) {
+      clearTimeout(closeTooltipTimer.current);
+      closeTooltipTimer.current = null;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceAbove = rect.top;
+    const spaceBelow = viewportHeight - rect.bottom;
+
+    // Show tooltip above if there's more space above, otherwise below
+    const showAbove = spaceAbove > spaceBelow;
+
+    setHoveredCell({
+      user: row.userName,
+      hour,
+      position: {
+        top: showAbove ? rect.top - 10 : rect.bottom + 10,
+        left: rect.left + rect.width / 2,
+        showAbove: showAbove
+      }
+    });
+  };
+
+  const handleCellMouseLeave = () => {
+    // Give user time to move into the tooltip
+    closeTooltipTimer.current = setTimeout(() => {
+      setHoveredCell(null);
+    }, 300); // 300ms grace period
+  };
+
+  const handleTooltipMouseEnter = () => {
+    // User entered the tooltip, cancel closing
+    if (closeTooltipTimer.current) {
+      clearTimeout(closeTooltipTimer.current);
+      closeTooltipTimer.current = null;
+    }
+  };
+
+  const handleTooltipMouseLeave = () => {
+    // User left the tooltip, close it immediately (or add delay if desired)
+    setHoveredCell(null);
+  };
+
   // Update date range when issues change to ensure new issues are included
   useEffect(() => {
     // If viewing "Today" and a new issue is added, ensure it's included
@@ -126,6 +174,13 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       if (startDate !== todayRange.start || endDate !== todayRange.end) {
         setStartDate(todayRange.start);
         setEndDate(todayRange.end);
+      }
+    } else if (activeRange === 'week') {
+      // If viewing "Week" and a new issue is added, ensure it's included
+      const weekRange = getDateRange('week');
+      if (startDate !== weekRange.start || endDate !== weekRange.end) {
+        setStartDate(weekRange.start);
+        setEndDate(weekRange.end);
       }
     }
   }, [issues.length, activeRange]); // Re-run when issues count changes
@@ -160,9 +215,9 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       if (!issue.created_at) return false;
       const createdDate = new Date(issue.created_at);
       if (Number.isNaN(createdDate.getTime())) return false;
-      
+
       const issueDateString = formatDate(createdDate);
-      
+
       // Compare dates as strings (YYYY-MM-DD format) for consistency
       if (startDate && issueDateString < startDate) return false;
       if (endDate && issueDateString > endDate) return false;
@@ -182,7 +237,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     const allHours = Array.from({ length: 24 }, (_, i) => i); // 0-23
     // Filter hours based on selection (empty string = show all)
     const hours = selectedHour && selectedHour !== '' ? [parseInt(selectedHour, 10)] : allHours;
-    
+
     // Get all unique users from filtered issues (not just monitoredPersonnel)
     // This ensures all users who logged issues appear in the matrix
     const usersFromIssues = new Set();
@@ -191,7 +246,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         usersFromIssues.add(issue.monitored_by);
       }
     });
-    
+
     // Combine users from issues and monitoredPersonnel, then deduplicate
     let allUsers = Array.from(new Set([
       ...Array.from(usersFromIssues),
@@ -213,7 +268,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       }
     });
     allUsers = allUsers.filter(user => user && activeUsers.has(user.toLowerCase()));
-    
+
     // Filter users based on search (use display names for search)
     let users = allUsers;
     if (userSearch.trim()) {
@@ -223,19 +278,19 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         return display && display.toLowerCase().includes(searchLower);
       });
     }
-    
+
     // Sort users alphabetically for consistent display
     users = users.sort((a, b) => {
       const nameA = (a || '').toLowerCase();
       const nameB = (b || '').toLowerCase();
       return nameA.localeCompare(nameB);
     });
-    
+
     if (users.length === 0) {
-      return { 
-        rows: [], 
-        maxCell: 0, 
-        totalsByUser: {}, 
+      return {
+        rows: [],
+        maxCell: 0,
+        totalsByUser: {},
         totalsByHour: {},
         grandTotal: 0,
         cellData: {} // { user-hour: { portfolios: [], issuesYes: [] } }
@@ -263,7 +318,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
             const matrixUser = (user || '').trim();
             if (!issueUser || !matrixUser) return false;
             return issueUser.toLowerCase() === matrixUser.toLowerCase() &&
-                   issue.issue_hour === hour;
+              issue.issue_hour === hour;
           }
         );
 
@@ -277,12 +332,12 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         // First, collect all issues with their times, grouped by portfolio
         const portfolioIssuesMap = {};
         userHourIssues.forEach((issue) => {
-          const portfolioName = issue.portfolio_name || 
-                               issue.portfolios?.name || 
-                               (issue.portfolio_id && portfolios.find(p => 
-                                 (p.portfolio_id || p.id) === issue.portfolio_id
-                               )?.name) ||
-                               'Unknown';
+          const portfolioName = issue.portfolio_name ||
+            issue.portfolios?.name ||
+            (issue.portfolio_id && portfolios.find(p =>
+              (p.portfolio_id || p.id) === issue.portfolio_id
+            )?.name) ||
+            'Unknown';
           if (portfolioName && portfolioName !== 'Unknown') {
             uniquePortfolios.add(portfolioName);
             if (!portfolioIssuesMap[portfolioName]) {
@@ -323,7 +378,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 portfolio: portfolioName,
                 details: issue.issue_details || 'No details',
                 caseNumber: issue.case_number || 'N/A',
-                date: issue.created_at ? new Date(issue.created_at).toLocaleString() : 'N/A'
+                date: issue.created_at ? convertToEST(issue.created_at).toLocaleString() : 'N/A'
               });
             }
           });
@@ -356,10 +411,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       return row;
     });
 
-    return { 
-      rows, 
-      maxCell, 
-      totalsByUser, 
+    return {
+      rows,
+      maxCell,
+      totalsByUser,
       totalsByHour,
       grandTotal,
       cellData
@@ -392,7 +447,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `user_hour_coverage_matrix_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `user_hour_coverage_matrix_${getCurrentESTDateString()}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -454,15 +509,15 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
 
     // Fallback: original behavior based on matrix (issues) if no completion data is available
     let filteredRows = matrix.rows.filter(row => row.total > 0); // Only show users who have coverage
-    
+
     // Filter by chart user search
     if (chartUserSearch.trim()) {
       const searchLower = chartUserSearch.toLowerCase();
-      filteredRows = filteredRows.filter(row => 
+      filteredRows = filteredRows.filter(row =>
         row.userName.toLowerCase().includes(searchLower)
       );
     }
-    
+
     return filteredRows
       .sort((a, b) => b.total - a.total) // Sort by total descending
       .map(row => {
@@ -480,45 +535,45 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
   // Get detailed stats for selected user
   const selectedUserDetails = useMemo(() => {
     if (!selectedUser) return null;
-    
-    const userIssues = filteredIssues.filter(issue => 
+
+    const userIssues = filteredIssues.filter(issue =>
       (issue.monitored_by || '').trim().toLowerCase() === selectedUser.toLowerCase()
     );
-    
-    const issuesYes = userIssues.filter(issue => 
+
+    const issuesYes = userIssues.filter(issue =>
       (issue.issue_present || '').toString().toLowerCase() === 'yes'
     ).length;
-    
-    const issuesMissed = userIssues.filter(issue => 
+
+    const issuesMissed = userIssues.filter(issue =>
       issue.issues_missed_by && issue.issues_missed_by.toLowerCase().includes(selectedUser.toLowerCase())
     ).length;
-    
+
     const uniquePortfolios = new Set(); // For display purposes
     const portfolioIssuesMap = {}; // Group issues by portfolio for visit detection
     const uniqueHours = new Set();
     const hourlyBreakdown = {};
-    
+
     // First, collect all issues grouped by portfolio
     userIssues.forEach(issue => {
-      const portfolioName = issue.portfolio_name || 
-                           issue.portfolios?.name || 
-                           (issue.portfolio_id && portfolios.find(p => 
-                             (p.portfolio_id || p.id) === issue.portfolio_id
-                           )?.name) ||
-                           'Unknown';
+      const portfolioName = issue.portfolio_name ||
+        issue.portfolios?.name ||
+        (issue.portfolio_id && portfolios.find(p =>
+          (p.portfolio_id || p.id) === issue.portfolio_id
+        )?.name) ||
+        'Unknown';
       if (portfolioName && portfolioName !== 'Unknown') {
         uniquePortfolios.add(portfolioName);
         if (!portfolioIssuesMap[portfolioName]) {
           portfolioIssuesMap[portfolioName] = [];
         }
-        const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+        const issueTime = issue.created_at ? convertToEST(issue.created_at) : convertToEST(new Date());
         portfolioIssuesMap[portfolioName].push({
           time: issueTime,
           hour: issue.issue_hour !== undefined && issue.issue_hour !== null ? issue.issue_hour : issueTime.getHours(),
           issue: issue
         });
       }
-      
+
       if (issue.issue_hour !== undefined && issue.issue_hour !== null) {
         uniqueHours.add(issue.issue_hour);
         if (!hourlyBreakdown[issue.issue_hour]) {
@@ -529,18 +584,18 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         if ((issue.issue_present || '').toString().toLowerCase() === 'yes') {
           hourlyBreakdown[issue.issue_hour].issuesYes += 1;
         }
-        
+
         // Store issue for visit detection per hour
         if (portfolioName && portfolioName !== 'Unknown') {
           if (!hourlyBreakdown[issue.issue_hour].portfolioIssues[portfolioName]) {
             hourlyBreakdown[issue.issue_hour].portfolioIssues[portfolioName] = [];
           }
-          const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+          const issueTime = issue.created_at ? convertToEST(issue.created_at) : convertToEST(new Date());
           hourlyBreakdown[issue.issue_hour].portfolioIssues[portfolioName].push(issueTime);
         }
       }
     });
-    
+
     // Count total portfolio visits: each lock/unlock session = 1 visit
     // Group issues logged within 5 seconds as same lock session (1 visit)
     // Any gap > 5 seconds = new lock session = new visit
@@ -559,7 +614,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
       });
       totalVisits += visitCount;
     });
-    
+
     // Count portfolio visits per hour: each lock/unlock session = 1 visit
     const hourlyBreakdownWithVisits = Object.keys(hourlyBreakdown).map(hour => {
       const hourData = hourlyBreakdown[hour];
@@ -577,7 +632,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         });
         hourVisits += visitCount;
       });
-      
+
       return {
         hour: parseInt(hour, 10),
         portfolios: hourVisits, // Count portfolio visits per hour based on time gaps
@@ -585,7 +640,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         issuesYes: hourData.issuesYes
       };
     }).sort((a, b) => a.hour - b.hour);
-    
+
     const display = normalizeDisplay(selectedUser);
     return {
       userName: display,
@@ -613,21 +668,21 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
         {/* Search Filters - Row 1 */}
         <div className="grid grid-cols-4 gap-4 items-end">
           {/* User Name Search */}
-            <div>
+          <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5 tracking-wide">
               Search By User Name
-              </label>
-              <div className="relative">
-                <svg
-                  className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
+            </label>
+            <div className="relative">
+              <svg
+                className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
                 placeholder="Type user name..."
@@ -643,11 +698,11 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   </svg>
                 </button>
               )}
-              </div>
             </div>
+          </div>
 
           {/* Hour Filter - Dropdown */}
-              <div>
+          <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5 tracking-wide">
               Filter By Hour
             </label>
@@ -659,7 +714,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               <option value="">All Hours</option>
               {Array.from({ length: 24 }, (_, i) => i).map(hour => (
                 <option key={hour} value={hour}>
-                  {hour}:00 {hour === new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }) * 1 ? '(Current EST)' : ''}
+                  {hour}:00 {hour === getCurrentESTHour() ? '(Current)' : ''}
                 </option>
               ))}
             </select>
@@ -694,11 +749,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   setEndDate(range.end);
                   setActiveRange('today');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  activeRange === 'today'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeRange === 'today'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
+                  }`}
               >
                 Today
               </button>
@@ -710,11 +764,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   setEndDate(range.end);
                   setActiveRange('yesterday');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  activeRange === 'yesterday'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeRange === 'yesterday'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
+                  }`}
               >
                 Yesterday
               </button>
@@ -726,11 +779,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   setEndDate(range.end);
                   setActiveRange('week');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  activeRange === 'week'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeRange === 'week'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
+                  }`}
               >
                 Week
               </button>
@@ -742,11 +794,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   setEndDate(range.end);
                   setActiveRange('month');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  activeRange === 'month'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeRange === 'month'
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
+                  }`}
               >
                 Month
               </button>
@@ -759,32 +810,42 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5 tracking-wide">
               From Date
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
+            </label>
+            <input
+              type="date"
+              value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
                 setActiveRange('custom');
               }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
+            />
+            {startDate && (
+              <div className="text-xs text-gray-500 mt-1">
+                Selected: {startDate}
               </div>
+            )}
+          </div>
           <div className="flex items-end gap-2">
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-600 mb-1.5 tracking-wide">
                 To Date
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
+              </label>
+              <input
+                type="date"
+                value={endDate}
                 onChange={(e) => {
                   setEndDate(e.target.value);
                   setActiveRange('custom');
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
-              </div>
+              />
+              {endDate && (
+                <div className="text-xs text-gray-500 mt-1">
+                  Selected: {endDate}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => {
                 const range = getDateRange('today');
@@ -793,7 +854,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 setActiveRange('today');
                 setUserSearch('');
                 setSelectedHour(''); // Reset to all hours
-                setIssueFilter('all'); // Reset to all issues
+                setIssueFilter('all'); // Reset to all issues - THIS IS KEY: must be 'all' to show all hours
               }}
               className="px-3 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
             >
@@ -801,8 +862,8 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
             </button>
           </div>
           <div className="col-span-2"></div>
-            </div>
-          </div>
+        </div>
+      </div>
 
       {/* Graphical Representations */}
       {showCharts && matrix.rows.length > 0 && (
@@ -844,8 +905,8 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 )}
               </div>
               {userChartData.length > 0 && (
-            <button
-              onClick={() => {
+                <button
+                  onClick={() => {
                     const header = ['User', 'Total Portfolios Monitored'];
                     const rows = userChartData.map(entry => [
                       entry.fullName,
@@ -858,7 +919,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                     const link = document.createElement('a');
                     const url = URL.createObjectURL(blob);
                     link.setAttribute('href', url);
-                    link.setAttribute('download', `user-coverage-chart-${new Date().toISOString().split('T')[0]}.csv`);
+                    link.setAttribute('download', `user-coverage-chart-${getCurrentESTDateString()}.csv`);
                     link.style.visibility = 'hidden';
                     document.body.appendChild(link);
                     link.click();
@@ -874,24 +935,24 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
               )}
             </div>
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart 
-                data={userChartData} 
+              <BarChart
+                data={userChartData}
                 margin={{ top: 20, right: 20, left: 20, bottom: 60 }}
                 barCategoryGap="5%"
               >
                 <defs>
                   <linearGradient id="barGradientTop" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#5a8f2f" stopOpacity={1}/>
-                    <stop offset="100%" stopColor="#76AB3F" stopOpacity={0.8}/>
+                    <stop offset="0%" stopColor="#5a8f2f" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#76AB3F" stopOpacity={0.8} />
                   </linearGradient>
                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#76AB3F" stopOpacity={1}/>
-                    <stop offset="100%" stopColor="#9fd86b" stopOpacity={0.8}/>
+                    <stop offset="0%" stopColor="#76AB3F" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#9fd86b" stopOpacity={0.8} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
-                <XAxis 
-                  dataKey="user" 
+                <XAxis
+                  dataKey="user"
                   angle={-30}
                   textAnchor="end"
                   height={70}
@@ -899,18 +960,18 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   stroke="#9ca3af"
                   interval={0}
                 />
-                <YAxis 
-                  label={{ 
-                    value: 'Total Portfolios Monitored', 
-                    angle: -90, 
-                    position: 'insideLeft', 
-                    style: { fontSize: 13, fontWeight: 600, fill: '#374151' } 
+                <YAxis
+                  label={{
+                    value: 'Total Portfolios Monitored',
+                    angle: -90,
+                    position: 'insideLeft',
+                    style: { fontSize: 13, fontWeight: 600, fill: '#374151' }
                   }}
                   tick={{ fontSize: 12, fill: '#6b7280', fontWeight: 500 }}
                   stroke="#9ca3af"
                   width={60}
                 />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{
                     backgroundColor: 'rgba(255, 255, 255, 0.98)',
                     border: '1px solid #e5e7eb',
@@ -930,8 +991,8 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   )}
                   cursor={{ fill: 'rgba(118, 171, 63, 0.1)' }}
                 />
-                <Bar 
-                  dataKey="portfolios" 
+                <Bar
+                  dataKey="portfolios"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={40}
                   onClick={(data) => {
@@ -946,10 +1007,10 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   style={{ cursor: 'pointer' }}
                 >
                   {userChartData.map((entry, index) => (
-                    <Cell 
+                    <Cell
                       key={`cell-${index}`}
                       fill={index < 3 ? 'url(#barGradientTop)' : 'url(#barGradient)'}
-                      style={{ 
+                      style={{
                         cursor: 'pointer',
                         opacity: selectedUser && selectedUser.toLowerCase() === (entry.rawKey || entry.fullName).toLowerCase() ? 0.7 : 1
                       }}
@@ -992,7 +1053,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 </svg>
               </button>
             </div>
-            
+
             <div className="p-6 space-y-6">
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1046,16 +1107,16 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={selectedUserDetails.hourlyBreakdown} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
-                      <XAxis 
-                        dataKey="hour" 
+                      <XAxis
+                        dataKey="hour"
                         tick={{ fontSize: 11, fill: '#6b7280' }}
                         label={{ value: 'Hour', position: 'insideBottom', offset: -5, style: { fontSize: 12 } }}
                       />
-                      <YAxis 
+                      <YAxis
                         tick={{ fontSize: 11, fill: '#6b7280' }}
                         label={{ value: 'Count', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
                       />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{
                           backgroundColor: 'rgba(255, 255, 255, 0.98)',
                           border: '1px solid #e5e7eb',
@@ -1113,17 +1174,17 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             {showCharts ? 'Hide Charts' : 'Show Charts'}
-            </button>
-            <button
-              onClick={exportToCSV}
-              className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow transition-colors"
-              style={{ backgroundColor: '#76AB3F' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
-            >
-              Export Matrix
-            </button>
-          </div>
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="px-4 py-2 text-sm font-medium text-white rounded-lg shadow transition-colors"
+            style={{ backgroundColor: '#76AB3F' }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#5a8f2f')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#76AB3F')}
+          >
+            Export Matrix
+          </button>
+        </div>
       )}
 
       {/* User Detail Modal */}
@@ -1135,16 +1196,16 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                 <h3 className="text-xl font-bold text-white">User Performance Details</h3>
                 <p className="text-sm text-green-50">{selectedUser}</p>
               </div>
-            <button
+              <button
                 onClick={() => setSelectedUser(null)}
                 className="text-white hover:text-gray-200 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-            </button>
+              </button>
             </div>
-            
+
             <div className="p-6 space-y-6">
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1186,9 +1247,9 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                       <span key={idx} className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
                         {portfolio}
                       </span>
-          ))}
-        </div>
-      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {/* Hourly Breakdown Chart */}
@@ -1198,16 +1259,16 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={selectedUserDetails.hourlyBreakdown} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
-                      <XAxis 
-                        dataKey="hour" 
+                      <XAxis
+                        dataKey="hour"
                         tick={{ fontSize: 11, fill: '#6b7280' }}
                         label={{ value: 'Hour', position: 'insideBottom', offset: -5, style: { fontSize: 12 } }}
                       />
-                      <YAxis 
+                      <YAxis
                         tick={{ fontSize: 11, fill: '#6b7280' }}
                         label={{ value: 'Count', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
                       />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{
                           backgroundColor: 'rgba(255, 255, 255, 0.98)',
                           border: '1px solid #e5e7eb',
@@ -1262,14 +1323,40 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Coverage Overview</h3>
             <p className="text-xs text-gray-500">
-              {matrix.grandTotal} portfolio coverage(s) across {matrix.rows.length} user(s) • {selectedHour && selectedHour !== '' ? `Hour ${selectedHour}:00` : '24 hours'}
-              {issueFilter === 'yes' && <span className="ml-1">(Active Issues only)</span>}
-              {(userSearch || (selectedHour && selectedHour !== '') || issueFilter === 'yes') && (
+              {matrix.grandTotal} portfolio coverage(s) across {matrix.rows.length} user(s) • {selectedHour && selectedHour !== '' ? `Hour ${selectedHour}:00` : '24 hours (scroll horizontally to see all)'}
+              <span className="ml-2 font-semibold text-gray-700">Date Range: {startDate} to {endDate}</span>
+              {issueFilter === 'yes' && <span className="ml-1 text-orange-600 font-semibold">⚠️ (Active Issues only - hours with only "No" issues are hidden)</span>}
+              {issueFilter === 'all' && <span className="ml-1 text-blue-600">✓ Showing all hours (0-23) including hours with "No" issues</span>}
+              {(userSearch || (selectedHour && selectedHour !== '')) && (
                 <span className="ml-2 text-green-600 font-semibold">
                   (Filtered)
                 </span>
               )}
             </p>
+            {filteredIssues.length === 0 && issues.length > 0 && (
+              <div className="mt-3 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <span className="text-yellow-600 font-bold text-lg">⚠️</span>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-yellow-800 mb-1">
+                      No issues found for selected date range!
+                    </div>
+                    <div className="text-xs text-yellow-700">
+                      <strong>Current filter:</strong> {startDate} to {endDate}
+                      <br />
+                      <strong>Total issues in system:</strong> {issues.length}
+                      <br />
+                      <strong>Solution:</strong> Adjust the date range above to match your data dates (e.g., if your data is from 12/30/2025, set From Date and To Date to 12/30/2025).
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {filteredIssues.length > 0 && (
+              <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-800">
+                ✓ Showing <strong>{filteredIssues.length}</strong> issue(s) for date range <strong>{startDate} to {endDate}</strong>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3 text-xs text-gray-500">
             <span className="inline-flex items-center gap-1">
@@ -1330,45 +1417,29 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                         <td
                           key={`${row.userName}-${hour}`}
                           className={`px-3 py-2 text-center align-middle font-semibold transition-colors ${tone} border border-white relative cursor-pointer`}
-                          onMouseEnter={(e) => {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const viewportHeight = window.innerHeight;
-                            const spaceAbove = rect.top;
-                            const spaceBelow = viewportHeight - rect.bottom;
-                            
-                            // Show tooltip above if there's more space above, otherwise below
-                            const showAbove = spaceAbove > spaceBelow;
-                            
-                            setHoveredCell({ 
-                              user: row.userName, 
-                              hour,
-                              position: {
-                                top: showAbove ? rect.top - 10 : rect.bottom + 10,
-                                left: rect.left + rect.width / 2,
-                                showAbove: showAbove
-                              }
-                            });
-                          }}
-                          onMouseLeave={() => setHoveredCell(null)}
+                          onMouseEnter={(e) => handleCellMouseEnter(e, row, hour)}
+                          onMouseLeave={handleCellMouseLeave}
                         >
                           {count || 0}
-                          
+
                           {/* Hover Tooltip */}
                           {isHovered && (cellInfo.portfolios.length > 0 || cellInfo.issuesYes.length > 0) && hoveredCell?.position && (
-                            <div 
-                              className="fixed z-[9999] w-80 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-4 pointer-events-none"
+                            <div
+                              className="fixed z-[9999] w-80 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-4" // REMOVED pointer-events-none
                               style={{
                                 top: `${hoveredCell.position.top}px`,
                                 left: `${hoveredCell.position.left}px`,
-                                transform: hoveredCell.position.showAbove 
-                                  ? 'translate(-50%, -100%)' 
+                                transform: hoveredCell.position.showAbove
+                                  ? 'translate(-50%, -100%)'
                                   : 'translate(-50%, 0)'
                               }}
+                              onMouseEnter={handleTooltipMouseEnter}
+                              onMouseLeave={handleTooltipMouseLeave}
                             >
                               <div className="font-bold text-sm mb-2 pb-2 border-b border-gray-700">
                                 {(row.displayName || row.userName)} - Hour {hour}:00
                               </div>
-                              
+
                               {/* Total Count - All Issues */}
                               {cellInfo.totalIssuesCount > 0 && (
                                 <div className="mb-3">
@@ -1377,7 +1448,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                                   </div>
                                 </div>
                               )}
-                              
+
                               {/* Total Portfolios Monitored */}
                               {cellInfo.totalCount > 0 && (
                                 <div className="mb-3">
@@ -1388,7 +1459,7 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                                     {cellInfo.portfolioInstances && cellInfo.portfolioInstances.length > 0 ? (
                                       cellInfo.portfolioInstances.map((item, idx) => (
                                         <div key={idx} className="text-gray-200 pl-2">
-                                          • {typeof item === 'string' ? item : item.portfolio} 
+                                          • {typeof item === 'string' ? item : item.portfolio}
                                           {typeof item === 'object' && item.caseNumber && item.caseNumber !== 'N/A' && (
                                             <span className="text-gray-400 ml-2">(Case: {item.caseNumber})</span>
                                           )}
@@ -1426,12 +1497,11 @@ const PortfolioMonitoringMatrix = ({ issues = [], portfolios = [], monitoredPers
                               )}
 
                               {/* Arrow pointing to cell */}
-                              <div 
-                                className={`absolute left-1/2 transform -translate-x-1/2 border-4 border-transparent ${
-                                  hoveredCell.position.showAbove 
-                                    ? 'top-full -mt-1 border-t-gray-900' 
-                                    : 'bottom-full mb-1 border-b-gray-900'
-                                }`}
+                              <div
+                                className={`absolute left-1/2 transform -translate-x-1/2 border-4 border-transparent ${hoveredCell.position.showAbove
+                                  ? 'top-full -mt-1 border-t-gray-900'
+                                  : 'bottom-full mb-1 border-b-gray-900'
+                                  }`}
                               ></div>
                             </div>
                           )}

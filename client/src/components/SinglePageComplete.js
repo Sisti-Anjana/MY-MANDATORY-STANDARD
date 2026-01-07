@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../services/supabaseClient';
 import HourlyCoverageChart from './HourlyCoverageChart';
@@ -10,44 +9,7 @@ import TicketLoggingTable from './TicketLoggingTable';
 import AdminPanel from './AdminPanel';
 import IssueDetailsView from './IssueDetailsView';
 import PortfolioHourSessionDrawer from './PortfolioHourSessionDrawer';
-
-// Global application time zone (all users see times in EST)
-const APP_TIME_ZONE = 'America/New_York';
-
-// Get current hour in app time zone (0-23)
-function getAppCurrentHour() {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: APP_TIME_ZONE,
-    }).formatToParts(new Date());
-    const hourPart = parts.find((p) => p.type === 'hour');
-    if (hourPart) {
-      const h = parseInt(hourPart.value, 10);
-      if (!Number.isNaN(h)) return h;
-    }
-  } catch (e) {
-    console.warn('Failed to compute app time zone hour, falling back to local time:', e);
-  }
-  return new Date().getHours();
-}
-
-// Format a Date in app time zone as HH:MM:SS
-function formatAppTime(date) {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: APP_TIME_ZONE,
-    }).format(date);
-  } catch (e) {
-    console.warn('Failed to format time in app time zone, falling back to local:', e);
-    return date.toLocaleTimeString();
-  }
-}
+import { getCurrentESTHour, getCurrentESTDateString, convertToEST, getNewYorkDate } from '../utils/dateUtils';
 
 const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -55,8 +17,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [issues, setIssues] = useState([]);
   const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentHour, setCurrentHour] = useState(getAppCurrentHour());
-  const [lastCheckedHour, setLastCheckedHour] = useState(getAppCurrentHour());
+  const [currentHour, setCurrentHour] = useState(getCurrentESTHour());
+  const [lastCheckedHour, setLastCheckedHour] = useState(getCurrentESTHour());
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingIssue, setEditingIssue] = useState(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -77,7 +39,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const [showSitesCheckedInput, setShowSitesCheckedInput] = useState(false); // Show input when "No" is selected
   const [showUnlockInput, setShowUnlockInput] = useState(false); // Show unlock reason input
   const [issueDetailsInitialPortfolioId, setIssueDetailsInitialPortfolioId] = useState('');
-  const [lastRefresh, setLastRefresh] = useState(new Date()); // Track when data was last refreshed
+  const [lastRefresh, setLastRefresh] = useState(getNewYorkDate()); // Track when data was last refreshed
   const [portfolioSearchTerm, setPortfolioSearchTerm] = useState(''); // Search term for filtering portfolios
   const [isPortfolioLockedByOther, setIsPortfolioLockedByOther] = useState(false); // Track if portfolio is locked by someone else
   const [portfolioLockedBy, setPortfolioLockedBy] = useState(null); // Track who locked the portfolio
@@ -113,7 +75,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
   const hasLoggedIssueForCurrentHour = (portfolioId) => {
     if (!portfolioId) return false;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentESTDateString();
     return issues.some(issue => {
       const issueDate = new Date(issue.created_at);
       if (Number.isNaN(issueDate.getTime())) return false;
@@ -131,7 +93,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
   const hasLoggedIssueForHour = (portfolioId, hour) => {
     if (!portfolioId || hour === null || hour === undefined) return false;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCurrentESTDateString();
     return issues.some(issue => {
       const issueDate = new Date(issue.created_at);
       if (Number.isNaN(issueDate.getTime())) return false;
@@ -158,12 +120,12 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         .from('hour_reservations')
         .delete()
         .eq('portfolio_id', portfolioId);
-      
+
       // If releaseAllUsers is false, only release locks for current user's session
       if (!releaseAllUsers) {
         query = query.eq('session_id', sessionId);
       }
-      
+
       // If hour is specified, only release that hour's reservation
       if (hour !== null) {
         query = query.eq('issue_hour', hour);
@@ -279,29 +241,31 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   };
 
   useEffect(() => {
-    fetchData();
-    loadMonitoredPersonnel();
+    // Initial mount calls - show loading spinner
+    fetchData(false);
+    loadMonitoredPersonnel(false);
     fetchActiveReservations();
-    
+
     const interval = setInterval(() => {
-      const newHour = getAppCurrentHour();
+      const newHour = getCurrentESTHour();
       setCurrentHour(newHour);
-      
+
       // Check if hour has changed - if so, reset all "all_sites_checked" statuses AND release all locks
       if (newHour !== lastCheckedHour) {
         console.log(`🕐 Hour changed from ${lastCheckedHour} to ${newHour}. Resetting all sites checked status and releasing all locks...`);
-        
+
         // CRITICAL: Release ALL locks for the previous hour
         // This ensures a fresh start for each new hour
         const releaseAllLocksForPreviousHour = async () => {
           try {
+            const nowIso = convertToEST(new Date()).toISOString();
             // Delete all reservations for the previous hour (or any hour that's not the current hour)
             // This ensures all locks are cleared when hour changes
             const { error: deleteError } = await supabase
               .from('hour_reservations')
               .delete()
               .eq('issue_hour', lastCheckedHour);
-            
+
             if (deleteError) {
               console.error('Error releasing locks for previous hour:', deleteError);
             } else {
@@ -313,16 +277,17 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             console.error('Error releasing locks on hour change:', err);
           }
         };
-        
+
         // Release all locks for previous hour
         releaseAllLocksForPreviousHour();
-        
-        // Reset all sites checked status
-        resetAllSitesChecked();
+
+        // Reset all sites checked status (this also triggers fetchData)
+        // Use true to suppress loading since we're in an interval
+        resetAllSitesChecked(true);
         setLastCheckedHour(newHour);
       }
     }, 60000);
-    
+
     // CRITICAL: Poll for active reservations every 2 seconds for real-time locks
     // Synchronized refresh to ensure all instances see same data
     const reservationInterval = setInterval(() => {
@@ -337,7 +302,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     };
 
     window.addEventListener('portfolioUnlocked', handlePortfolioUnlocked);
-    
+
     // CRITICAL: Reload issues and portfolios every 15 seconds for real-time updates
     // Synchronized refresh interval to ensure all instances stay in sync
     const dataRefreshInterval = setInterval(async () => {
@@ -347,16 +312,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       await fetchActiveReservations(); // Also refresh reservations to show locks
       setTimeout(() => setIsAutoRefreshing(false), 300); // Show indicator briefly
     }, 15000); // 15s for consistent sync across all instances
-    
+
     return () => {
       clearInterval(interval);
       clearInterval(reservationInterval);
       clearInterval(dataRefreshInterval);
       window.removeEventListener('portfolioUnlocked', handlePortfolioUnlocked);
     };
-    // We intentionally only depend on lastCheckedHour to avoid recreating intervals on every render.
-    // fetchData / fetchActiveReservations / resetAllSitesChecked are stable enough for this effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCheckedHour]);
 
   useEffect(() => {
@@ -377,7 +339,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         selectedPortfolioForAction,
         portfoliosLength: portfolios.length
       });
-      
+
       if (!showActionModal || !selectedPortfolioForAction) {
         console.log('⏸️ Early return - modal not open or no portfolio selected');
         return;
@@ -399,11 +361,11 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
       const sessionId = ensureSessionId();
       const nowIso = new Date().toISOString();
-      const loggedInUser = sessionStorage.getItem('username') || 
-                          sessionStorage.getItem('fullName') || 
-                          '';
+      const loggedInUser = sessionStorage.getItem('username') ||
+        sessionStorage.getItem('fullName') ||
+        '';
       const currentUser = String(loggedInUser || '').trim();
-      
+
       console.log('👤 Current logged-in user info:', {
         username: sessionStorage.getItem('username'),
         fullName: sessionStorage.getItem('fullName'),
@@ -436,22 +398,22 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         if (myActiveReservations.length > 0) {
           const myOtherLock = myActiveReservations[0];
           const otherPortfolioId = myOtherLock.portfolio_id;
-          
+
           // Check if this is a DIFFERENT portfolio
           if (otherPortfolioId !== portfolioId) {
             // Check if the other portfolio is completed
-            const otherPortfolio = portfolios.find(p => 
+            const otherPortfolio = portfolios.find(p =>
               (p.portfolio_id || p.id) === otherPortfolioId
             );
             const isOtherCompleted = otherPortfolio?.all_sites_checked === true;
-            
+
             console.log('🔍 Found lock on different portfolio:', {
               otherPortfolioId,
               currentPortfolioId: portfolioId,
               otherPortfolioName: otherPortfolio?.name,
               isOtherCompleted
             });
-            
+
             if (!isOtherCompleted) {
               // Other portfolio is NOT completed - disable button
               const otherPortfolioName = otherPortfolio?.name || 'another portfolio';
@@ -497,7 +459,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           const rSessionId = String(r.session_id || '').trim();
           const sessionMatches = rSessionId === String(sessionId || '').trim();
           const userMatches = rMonitoredBy.toLowerCase() === currentUser.toLowerCase();
-          
+
           console.log('  Checking reservation:', {
             reservationMonitoredBy: rMonitoredBy,
             reservationMonitoredByLower: rMonitoredBy.toLowerCase(),
@@ -509,7 +471,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             sessionMatches,
             isMyLock: sessionMatches && userMatches
           });
-          
+
           return sessionMatches && userMatches;
         });
 
@@ -539,7 +501,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         // But check if user has a lock on a DIFFERENT portfolio
         // If they do and it's not completed, disable button
         // If they don't have any lock, or their other lock is completed, allow locking this one
-        
+
         // Check if user has ANY active lock
         // IMPORTANT: Only check locks for CURRENT hour - locks from previous hours are invalid
         const { data: myAnyReservations, error: myAnyError } = await supabase
@@ -562,22 +524,22 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           if (myAnyActiveReservations.length > 0) {
             const myOtherLock = myAnyActiveReservations[0];
             const otherPortfolioId = myOtherLock.portfolio_id;
-            
+
             // Check if this is a DIFFERENT portfolio
             if (otherPortfolioId !== portfolioId) {
               // Check if the other portfolio is completed
               // CRITICAL: Check if completed for CURRENT HOUR and TODAY
-              const otherPortfolio = portfolios.find(p => 
+              const otherPortfolio = portfolios.find(p =>
                 (p.portfolio_id || p.id) === otherPortfolioId
               );
               const isOtherCompleted = otherPortfolio?.all_sites_checked === true;
               const otherCheckedHour = normalizeCheckedHour(otherPortfolio?.all_sites_checked_hour);
               const otherCheckedDate = normalizeCheckedDate(otherPortfolio?.all_sites_checked_date);
-              const today = new Date().toISOString().split('T')[0];
-              const isOtherCompletedForCurrentHour = isOtherCompleted && 
-                otherCheckedHour === currentHour && 
+              const today = getCurrentESTDateString();
+              const isOtherCompletedForCurrentHour = isOtherCompleted &&
+                otherCheckedHour === currentHour &&
                 otherCheckedDate === today;
-              
+
               console.log('🔍 Checking other portfolio completion:', {
                 portfolioName: otherPortfolio?.name,
                 all_sites_checked: otherPortfolio?.all_sites_checked,
@@ -587,7 +549,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 today: today,
                 isOtherCompletedForCurrentHour
               });
-              
+
               if (!isOtherCompletedForCurrentHour) {
                 // Other portfolio is NOT completed for current hour - disable button
                 const otherPortfolioName = otherPortfolio?.name || 'another portfolio';
@@ -605,7 +567,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             }
           }
         }
-        
+
         // No lock found for this portfolio AND no incomplete lock on other portfolio
         // Allow user to lock this portfolio
         console.log('ℹ️ No lock found - button ENABLED (can lock this portfolio)');
@@ -615,7 +577,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     };
 
     checkLockStatus();
-  }, [showActionModal, selectedPortfolioForAction, portfolios, currentHour]);
+  }, [showActionModal, selectedPortfolioForAction, portfolios, currentHour, activeReservations]);
 
   // Debug: Log state changes
   useEffect(() => {
@@ -629,12 +591,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     }
   }, [isPortfolioLockedByOther, portfolioLockedBy, showActionModal, selectedPortfolioForAction]);
 
-  const loadMonitoredPersonnel = async () => {
+  const loadMonitoredPersonnel = async (suppressLoading = false) => {
     // Single source of truth: login users (users table)
     let usersList = [];
     const displayMap = {};
 
     try {
+      if (!suppressLoading) setLoading(true);
       const { data: loginUsersData, error: loginUsersError } = await supabase
         .from('users')
         .select('username, full_name')
@@ -676,16 +639,18 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
     // Persist for reference (but still sourced from users table on next load)
     localStorage.setItem('monitoredPersonnel', JSON.stringify(usersList));
-    
+
     setUserDisplayMap(displayMap);
     setMonitoredPersonnel(usersList);
+    if (!suppressLoading) setLoading(false);
   };
 
   // Reset all sites checked status for all portfolios (called on hour change)
-  const resetAllSitesChecked = async () => {
+  const resetAllSitesChecked = async (suppressLoading = false) => {
     try {
+      if (!suppressLoading) setLoading(true);
       console.log('🔄 Resetting all sites checked status for new hour...');
-      
+
       const { error } = await supabase
         .from('portfolios')
         .update({
@@ -695,7 +660,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           all_sites_checked_by: null
         })
         .neq('portfolio_id', '00000000-0000-0000-0000-000000000000'); // Update all records
-      
+
       if (error) {
         // If all_sites_checked_by column is missing, retry without it
         if (error.message && error.message.includes('all_sites_checked_by')) {
@@ -720,7 +685,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           return;
         }
       }
-      
+
       // Update local state
       setPortfolios(prev =>
         prev.map(p => ({
@@ -731,8 +696,10 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           all_sites_checked_by: null
         }))
       );
-      
+
       console.log('✅ Successfully reset all sites checked status');
+      // Update data to reflect reset status
+      await fetchData(suppressLoading);
     } catch (err) {
       console.error('❌ Unexpected error resetting sites checked:', err);
     }
@@ -744,14 +711,14 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const isPortfolioSitesChecked = (portfolioName) => {
     const record = findPortfolioRecord(portfolioName);
     if (!record?.all_sites_checked) return false;
-    
+
     // Check if the status is for the current hour and today's date
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
     const storedHour = normalizeCheckedHour(record.all_sites_checked_hour);
     const storedDate = normalizeCheckedDate(record.all_sites_checked_date);
     const isCurrentHour = storedHour === currentHour;
     const isToday = storedDate === today;
-    
+
     // Only return true if checked for current hour and today
     return record.all_sites_checked === true && isCurrentHour && isToday;
   };
@@ -770,18 +737,18 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     setUpdatingSitesCheckPortfolio(portfolioName);
 
     try {
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      const today = getCurrentESTDateString(); // YYYY-MM-DD format
 
       // CRITICAL VALIDATION: Only the person who locked the portfolio can mark "All Sites Checked" = Yes
       // BUT: Anyone can enter/update the text when "No" is selected (no lock required)
       if (value) {
         const sessionId = ensureSessionId();
         const nowIso = new Date().toISOString();
-        const loggedInUser = sessionStorage.getItem('username') || 
-                            sessionStorage.getItem('fullName') || 
-                            '';
+        const loggedInUser = sessionStorage.getItem('username') ||
+          sessionStorage.getItem('fullName') ||
+          '';
         const currentUser = String(loggedInUser || '').trim();
-        
+
         // Check if current user has an active lock on this portfolio
         const { data: activeReservations, error: reservationCheckError } = await supabase
           .from('hour_reservations')
@@ -789,26 +756,26 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           .eq('portfolio_id', portfolioId)
           .eq('issue_hour', currentHour)
           .gt('expires_at', nowIso);
-        
+
         if (reservationCheckError) {
           console.error('Error checking reservation:', reservationCheckError);
           setSitesCheckError('Unable to verify portfolio lock. Please try again.');
           setUpdatingSitesCheckPortfolio(null);
           return;
         }
-        
+
         // Filter to ensure BOTH session_id AND monitored_by match the current user
         const myActiveReservations = (activeReservations || []).filter(r => {
           const rSessionId = String(r.session_id || '').trim();
           const rMonitoredBy = String(r.monitored_by || '').trim();
           const mySessionIdStr = String(sessionId || '').trim();
           const myUserStr = String(currentUser || '').trim();
-          
+
           const sessionMatches = rSessionId === mySessionIdStr;
           const userMatches = rMonitoredBy.toLowerCase() === myUserStr.toLowerCase();
           return sessionMatches && userMatches;
         });
-        
+
         if (myActiveReservations.length === 0) {
           // No lock found for current user
           if (activeReservations && activeReservations.length > 0) {
@@ -836,7 +803,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             return;
           }
         }
-        
+
         console.log('✅ Lock validated - user has valid lock for marking complete:', {
           sessionId: myActiveReservations[0].session_id,
           monitoredBy: myActiveReservations[0].monitored_by
@@ -852,7 +819,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         const hourToCheck = record?.all_sites_checked_hour !== null && record?.all_sites_checked_hour !== undefined
           ? normalizeCheckedHour(record.all_sites_checked_hour)
           : currentHour;
-        
+
         const hasLoggedIssue = hasLoggedIssueForHour(portfolioId, hourToCheck);
         if (!hasLoggedIssue) {
           // Also check current hour as fallback
@@ -864,7 +831,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           }
         }
       }
-      
+
       // Prepare update data
       const loggedInUserForComplete =
         (sessionStorage.getItem('username') || sessionStorage.getItem('fullName') || '').trim() || null;
@@ -874,7 +841,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         all_sites_checked_date: value ? today : null,
         all_sites_checked_by: value ? loggedInUserForComplete : null
       };
-      
+
       // If "No" is selected, preserve existing text or save new text
       // If "Yes" is selected, clear the text
       if (!value) {
@@ -889,7 +856,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         // Clear text when "Yes" is selected
         updateData.sites_checked_details = null;
       }
-      
+
       const { error } = await supabase
         .from('portfolios')
         .update(updateData)
@@ -920,27 +887,27 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       setPortfolios(prev =>
         prev.map(p =>
           (p.portfolio_id || p.id) === portfolioId
-            ? { 
-                ...p, 
-                all_sites_checked: value,
-                all_sites_checked_hour: value ? currentHour : null,
-                all_sites_checked_date: value ? today : null,
-                all_sites_checked_by: value ? loggedInUserForComplete : null,
-                sites_checked_details: value ? null : (sitesCheckedText.trim() || p.sites_checked_details || null)
-              }
+            ? {
+              ...p,
+              all_sites_checked: value,
+              all_sites_checked_hour: value ? currentHour : null,
+              all_sites_checked_date: value ? today : null,
+              all_sites_checked_by: value ? loggedInUserForComplete : null,
+              sites_checked_details: value ? null : (sitesCheckedText.trim() || p.sites_checked_details || null)
+            }
             : p
         )
       );
 
       if (value) {
         // CRITICAL FIX: Release ALL reservations for this portfolio when "All Sites Checked" = Yes
-        // This allows:
-        // 1. The current user to immediately lock another portfolio after completing one
-        // 2. Other users to lock this portfolio again in the same hour (since it's now free)
+        // This allows other users to lock it again immediately if needed, and marks it as "free"
         console.log(`🔓 Releasing ALL locks for portfolio: ${portfolioName} (ID: ${portfolioId}) - allowing other users to lock it again`);
         await releaseReservationForPortfolio(portfolioId, null, true); // true = release ALL users' locks for this portfolio
+
         setSitesCheckedText(''); // Clear text when "Yes" is selected
         setShowSitesCheckedInput(false);
+
         // Force immediate refresh to update UI for all users
         await fetchActiveReservations();
         await fetchDataBackground();
@@ -977,7 +944,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   // Allow unlock ONLY if the current user owns the lock
   const canUnlockSelectedPortfolio =
     !!selectedPortfolioReservation && isPortfolioLockedByCurrentUser;
-  
+
   // Load sites checked text when modal opens or portfolio changes
   useEffect(() => {
     if (selectedPortfolioRecord?.sites_checked_details) {
@@ -997,36 +964,36 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         .from('portfolios')
         .insert(portfoliosToInsert)
         .select();
-      
+
       if (error) {
         console.error('❌ Error auto-inserting portfolios:', error);
       } else {
         console.log('✅ Successfully inserted', data.length, 'portfolios');
-        // Refresh data
-        fetchData();
+        // Refresh data normally (show loading) after auto-insert
+        await fetchData(false);
       }
     } catch (error) {
       console.error('❌ Unexpected error auto-inserting portfolios:', error);
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = async (suppressLoading = false) => {
     try {
-      setLoading(true);
-      
+      if (!suppressLoading) setLoading(true);
+
       // Fetch portfolios - Always fetch fresh data (no cache)
       const { data: portfoliosData, error: portfoliosError } = await supabase
         .from('portfolios')
         .select('*')
         .order('name');
-      
+
       if (portfoliosError) {
         console.error('❌ Error fetching portfolios:', portfoliosError);
         // Use hardcoded portfolios as fallback
         const hardcodedPortfolios = portfolioCards.map((p, index) => ({
           portfolio_id: `temp-${index}`,
           name: p.name,
-          created_at: new Date().toISOString(),
+          created_at: getNewYorkDate().toISOString(),
           all_sites_checked: false
         }));
         setPortfolios(hardcodedPortfolios);
@@ -1057,8 +1024,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       const { data: sitesData, error: sitesError } = await supabase
         .from('sites')
         .select('*');
-        // .order('site_name');  // Temporarily disabled - column may not exist
-      
+      // .order('site_name');  // Temporarily disabled - column may not exist
+
       if (sitesError) throw sitesError;
       setSites(sitesData || []);
 
@@ -1073,17 +1040,17 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           )
         `)
         .order('created_at', { ascending: false });
-      
+
       if (issuesError) throw issuesError;
-      
+
       // Transform the data to include portfolio_name at root level
       const transformedIssues = (issuesData || []).map(issue => ({
         ...issue,
         portfolio_name: issue.portfolios?.name || 'Unknown'
       }));
-      
+
       setIssues(transformedIssues);
-      
+
       // Update last refresh timestamp
       setLastRefresh(new Date());
     } catch (error) {
@@ -1098,13 +1065,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const fetchDataBackground = async () => {
     try {
       // NO setLoading(true) here - this is the key difference!
-      
+
       // Fetch portfolios - Always fetch fresh data (no cache)
       const { data: portfoliosData, error: portfoliosError } = await supabase
         .from('portfolios')
         .select('*')
         .order('name');
-      
+
       if (portfoliosError) {
         console.error('❌ Error fetching portfolios (background):', portfoliosError);
         // Don't update on error during background refresh
@@ -1129,7 +1096,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       const { data: sitesData, error: sitesError } = await supabase
         .from('sites')
         .select('*');
-      
+
       if (!sitesError && sitesData) {
         setSites(sitesData);
       }
@@ -1145,18 +1112,18 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           )
         `)
         .order('created_at', { ascending: false });
-      
+
       if (!issuesError && issuesData) {
         // Transform the data to include portfolio_name at root level
         const transformedIssues = issuesData.map(issue => ({
           ...issue,
           portfolio_name: issue.portfolios?.name || 'Unknown'
         }));
-        
-        console.log(`📊 Fetched ${transformedIssues.length} issues at ${new Date().toLocaleTimeString()}`);
+
+        console.log(`📊 Fetched ${transformedIssues.length} issues at ${getNewYorkDate().toLocaleTimeString('en-US', { timeZone: 'America/New_York' })}`);
         setIssues(transformedIssues);
         // Update last refresh timestamp
-        setLastRefresh(new Date());
+        setLastRefresh(getNewYorkDate());
       } else if (issuesError) {
         console.error('❌ Error fetching issues:', issuesError);
       }
@@ -1181,36 +1148,36 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           )
         `)
         .eq('issue_hour', currentHour) // CRITICAL: Only get locks for current hour
-        .gt('expires_at', new Date().toISOString())
+        .gt('expires_at', getNewYorkDate().toISOString())
         .order('reserved_at', { ascending: false }); // Get most recent first
-      
+
       if (error) {
         console.error('Error fetching reservations:', error);
         return;
       }
-      
+
       // Transform data to include portfolio_name at root level
       // CRITICAL: Ensure portfolio_name is always set correctly
       const transformedData = (data || []).map(r => {
-        const portfolioName = r.portfolios?.name || 
-                             (r.portfolio_name ? r.portfolio_name : 'Unknown');
-        const portfolioId = r.portfolio_id || 
-                           r.portfolios?.portfolio_id || 
-                           null;
-        
+        const portfolioName = r.portfolios?.name ||
+          (r.portfolio_name ? r.portfolio_name : 'Unknown');
+        const portfolioId = r.portfolio_id ||
+          r.portfolios?.portfolio_id ||
+          null;
+
         return {
           ...r,
           portfolio_name: portfolioName,
           portfolio_id: portfolioId || r.portfolio_id
         };
       });
-      
+
       // CRITICAL: Force state update even if data looks the same
       // This ensures React re-renders the cards
       setActiveReservations(transformedData);
-      
+
       // Debug: Log reservations for troubleshooting
-      console.log(`🔒 Fetched ${transformedData.length} active reservations at ${new Date().toLocaleTimeString()}`);
+      console.log(`🔒 Fetched ${transformedData.length} active reservations at ${getNewYorkDate().toLocaleTimeString('en-US', { timeZone: 'America/New_York' })}`);
       if (transformedData.length > 0) {
         console.log('🔒 Active reservations:', transformedData.map(r => ({
           portfolio: r.portfolio_name,
@@ -1259,7 +1226,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     // Get the most recent issue
     const latestIssue = portfolioIssues[0];
     const lastHour = latestIssue.issue_hour;
-    
+
     if (lastHour === null || lastHour === undefined) {
       return null;
     }
@@ -1268,19 +1235,19 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     // Use date strings for more reliable comparison (avoids timezone issues)
     const today = new Date();
     const todayDateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     const issueDate = new Date(latestIssue.created_at);
     const issueDateStr = issueDate.toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     // Calculate yesterday's date string
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayDateStr = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     // CRITICAL FIX: If issue hour is greater than current hour, it's definitely from yesterday
     // (or earlier) because hours can't be in the future. This is the most reliable check.
     let isYesterday = false;
-    
+
     if (lastHour > currentHour) {
       // Issue hour is in the future relative to current hour, so it must be from yesterday or earlier
       isYesterday = true;
@@ -1307,19 +1274,19 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       console.log(`✅ Found site_range for ${portfolio.name}:`, siteRange);
       return siteRange;
     }
-    
+
     // Debug: Log if no site_range found
     if (!portfolio.site_range) {
       console.log(`⚠️ No site_range for ${portfolio.name}`);
     }
-    
+
     // If no site_range, check if there are sites in the sites table
     if (!portfolio.portfolio_id) return null;
     if (!sites || sites.length === 0) return null;
-    
+
     const portfolioSites = sites.filter(site => {
-      return site.portfolio_id === portfolio.portfolio_id || 
-             String(site.portfolio_id) === String(portfolio.portfolio_id);
+      return site.portfolio_id === portfolio.portfolio_id ||
+        String(site.portfolio_id) === String(portfolio.portfolio_id);
     }).map(site => site.site_name || site.name).sort();
 
     if (portfolioSites.length === 0) return null;
@@ -1360,12 +1327,12 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
   const getPortfolioStatus = (portfolioName) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const portfolioIssues = issues.filter(issue => {
       const issueDate = new Date(issue.created_at);
       issueDate.setHours(0, 0, 0, 0);
-      return issue.portfolio_name === portfolioName && 
-             issueDate.getTime() === today.getTime();
+      return issue.portfolio_name === portfolioName &&
+        issueDate.getTime() === today.getTime();
     }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const sitesConfirmed = isPortfolioSitesChecked(portfolioName);
@@ -1373,77 +1340,72 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     const checkedHour = record?.all_sites_checked_hour ? normalizeCheckedHour(record.all_sites_checked_hour) : null;
 
     if (portfolioIssues.length === 0) {
-      return { 
-        status: 'No Activity (4h+)', 
-        color: 'bg-red-100 border-red-300', 
-        textColor: 'text-red-800' 
+      return {
+        status: 'No Activity (4h+)',
+        color: 'bg-red-100 border-red-300',
+        textColor: 'text-red-800'
       };
     }
 
-    // Find the most recent issue
     const latestIssue = portfolioIssues[0];
     const hoursDiff = currentHour - latestIssue.issue_hour;
 
+    // Handle negative hoursDiff (e.g., issue logged at hour 23, current hour is 0)
+    // In this case, treat as if it's from previous day, so it's 4h+
+    if (hoursDiff < 0 || hoursDiff >= 4) {
+      return {
+        status: 'No Activity (4h+)',
+        color: 'bg-red-100 border-red-300',
+        textColor: 'text-red-800'
+      };
+    } else if (hoursDiff >= 1) {
+      // If 1 or more hours have passed, show the inactivity color regardless of site confirmation
+      // This ensures Green -> Blue -> Yellow -> Orange -> Red progression
+      if (hoursDiff === 1) {
+        return {
+          status: '1h Inactive',
+          color: 'bg-blue-100 border-blue-300',
+          textColor: 'text-blue-800'
+        };
+      } else if (hoursDiff === 2) {
+        return {
+          status: '2h Inactive',
+          color: 'bg-yellow-200 border-yellow-400',
+          textColor: 'text-yellow-900'
+        };
+      } else { // hoursDiff === 3
+        return {
+          status: '3h Inactive',
+          color: 'bg-orange-200 border-orange-400',
+          textColor: 'text-orange-900'
+        };
+      }
+    }
+
+    // Now check sites configuration - only if within the current hour (hoursDiff < 1)
     if (!sitesConfirmed) {
-      return { 
-        status: 'Awaiting sites confirmation', 
-        color: 'bg-yellow-100 border-yellow-300', 
-        textColor: 'text-yellow-800' 
+      return {
+        status: 'Awaiting sites confirmation',
+        color: 'bg-yellow-100 border-yellow-300',
+        textColor: 'text-yellow-800'
       };
     }
 
     // CRITICAL FIX: If sites are confirmed, check if it's still the same hour
     // If checked in current hour, ALWAYS show green until next hour
-    // This ensures once "All Sites Checked" = Yes is clicked, it stays green for the entire hour
     if (sitesConfirmed && checkedHour !== null && checkedHour === currentHour) {
-      // Portfolio was checked in current hour - stay green for entire hour
-      return { 
-        status: 'Updated (<1h)', 
-        color: 'bg-green-100 border-green-300', 
-        textColor: 'text-green-800' 
+      return {
+        status: 'Updated (<1h)',
+        color: 'bg-green-100 border-green-300',
+        textColor: 'text-green-800'
       };
     }
 
-    // Handle negative hoursDiff (e.g., issue logged at hour 23, current hour is 0)
-    // In this case, treat as if it's from previous day, so it's 4h+
-    if (hoursDiff < 0 || hoursDiff >= 4) {
-      return { 
-        status: 'No Activity (4h+)', 
-        color: 'bg-red-100 border-red-300', 
-        textColor: 'text-red-800' 
-      };
-    } else if (hoursDiff < 1) {
-      return { 
-        status: 'Updated (<1h)', 
-        color: 'bg-green-100 border-green-300', 
-        textColor: 'text-green-800' 
-      };
-    } else if (hoursDiff === 1) {
-      return { 
-        status: '1h Inactive', 
-        color: 'bg-blue-100 border-blue-300', 
-        textColor: 'text-blue-800' 
-      };
-    } else if (hoursDiff === 2) {
-      return { 
-        status: '2h Inactive', 
-        color: 'bg-yellow-200 border-yellow-400', 
-        textColor: 'text-yellow-900' 
-      };
-    } else if (hoursDiff === 3) {
-      return { 
-        status: '3h Inactive', 
-        color: 'bg-orange-200 border-orange-400', 
-        textColor: 'text-orange-900' 
-      };
-    } else {
-      // Fallback for any other case (shouldn't happen, but just in case)
-      return { 
-        status: 'No Activity (4h+)', 
-        color: 'bg-red-100 border-red-300', 
-        textColor: 'text-red-800' 
-      };
-    }
+    return {
+      status: 'Updated (<1h)',
+      color: 'bg-green-100 border-green-300',
+      textColor: 'text-green-800'
+    };
   };
 
   // Check if portfolio is currently reserved (locked by someone)
@@ -1454,21 +1416,21 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       const pName = (p.name || '').trim();
       return pName.toLowerCase() === portfolioName.trim().toLowerCase();
     });
-    
+
     if (!portfolio) {
       console.warn(`⚠️ Portfolio not found: ${portfolioName}`);
       return null;
     }
-    
+
     const portfolioId = portfolio.portfolio_id || portfolio.id;
     if (!portfolioId) {
       console.warn(`⚠️ Portfolio ID not found for: ${portfolioName}`);
       return null;
     }
-    
+
     // Normalize IDs to strings for comparison (handles UUID and integer types)
     const normalizedPortfolioId = String(portfolioId).trim().toLowerCase();
-    
+
     // DEBUG: Log what we're searching for
     console.log(`🔍 Searching for reservation:`, {
       portfolioName,
@@ -1477,7 +1439,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       activeReservationsCount: activeReservations.length,
       currentHour
     });
-    
+
     // Find reservation for this portfolio - check by portfolio_id OR portfolio_name
     // Use multiple matching strategies to ensure we catch all reservations
     const reservation = activeReservations.find(r => {
@@ -1487,28 +1449,28 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         console.log(`✅ Found reservation by name match:`, r);
         return true;
       }
-      
+
       // Strategy 2: Match by portfolio_id (normalized string comparison for UUID safety)
       const rPortfolioId = r.portfolio_id ? String(r.portfolio_id).trim().toLowerCase() : null;
       if (rPortfolioId && rPortfolioId === normalizedPortfolioId) {
         return true;
       }
-      
+
       // Strategy 3: Match by nested portfolio object name
       const nestedName = (r.portfolios?.name || '').trim();
       if (nestedName && nestedName.toLowerCase() === portfolioName.trim().toLowerCase()) {
         return true;
       }
-      
+
       // Strategy 4: Match by nested portfolio object ID
       const nestedId = r.portfolios?.portfolio_id ? String(r.portfolios.portfolio_id).trim().toLowerCase() : null;
       if (nestedId && nestedId === normalizedPortfolioId) {
         return true;
       }
-      
+
       return false;
     });
-    
+
     if (reservation) {
       console.log(`🔒 Found reservation for ${portfolioName}:`, {
         portfolio_id: reservation.portfolio_id,
@@ -1516,22 +1478,22 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         user: reservation.monitored_by
       });
     }
-    
+
     return reservation || null;
   };
 
   const handlePortfolioClick = async (portfolioName) => {
     // Track that this portfolio has been interacted with
     setInteractedPortfolios(prev => new Set([...prev, portfolioName]));
-    
+
     setSelectedPortfolioForAction(portfolioName);
     setShowActionModal(true);
-    
+
     // CRITICAL FIX: Immediately refresh data when clicking a portfolio
     // This ensures users see the latest status (locks, green cards, etc.)
     await fetchActiveReservations();
     fetchDataBackground();
-    
+
     // Check if portfolio is locked by someone else (check by monitored_by name)
     const portfolioToCheck = portfolios.find((p) => p.name === portfolioName);
     if (portfolioToCheck) {
@@ -1539,9 +1501,9 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       if (portfolioId) {
         const sessionId = ensureSessionId();
         const nowIso = new Date().toISOString();
-        const loggedInUser = sessionStorage.getItem('username') || 
-                            sessionStorage.getItem('fullName') || 
-                            '';
+        const loggedInUser = sessionStorage.getItem('username') ||
+          sessionStorage.getItem('fullName') ||
+          '';
         const currentUser = String(loggedInUser || '').trim();
 
         console.log('🔍 Checking lock for portfolio:', {
@@ -1584,7 +1546,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
             const sessionMatches = rSessionId === String(sessionId || '').trim();
             const userMatches = rMonitoredBy.toLowerCase() === currentUser.toLowerCase();
             const isMyLock = sessionMatches && userMatches;
-            
+
             console.log('🔍 Checking if reservation is mine:', {
               reservationMonitoredBy: rMonitoredBy,
               myUser: currentUser,
@@ -1594,7 +1556,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
               sessionMatches,
               isMyLock
             });
-            
+
             return isMyLock;
           });
 
@@ -1640,7 +1602,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
     const portfolioToSelect = portfolios.find(
       (p) => p.name === selectedPortfolioForAction
     );
-    
+
     if (!portfolioToSelect) {
       alert('❌ ERROR: Portfolio not found.');
       return;
@@ -1732,13 +1694,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
   const handleEditIssue = async (issue) => {
     // CRITICAL: Only the person who logged the issue (monitored_by) can edit it
-    const loggedInUser = sessionStorage.getItem('username') || 
-                        sessionStorage.getItem('fullName') || 
-                        '';
-    
+    const loggedInUser = sessionStorage.getItem('username') ||
+      sessionStorage.getItem('fullName') ||
+      '';
+
     const issueMonitoredBy = (issue.monitored_by || '').trim();
     const currentUser = loggedInUser.trim();
-    
+
     // Check if current user matches the person who logged the issue
     if (!issueMonitoredBy || currentUser.toLowerCase() !== issueMonitoredBy.toLowerCase()) {
       alert(`❌ ERROR: Only the person who logged this issue can edit it.\n\nThis issue was logged by: ${issueMonitoredBy || 'Unknown'}\n\nYou are logged in as: ${currentUser || 'Unknown'}`);
@@ -1774,16 +1736,16 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           // Someone else has it locked
           const otherLock = activeReservations[0];
           const lockedBy = String(otherLock.monitored_by || 'another user').trim();
-          const portfolioName = portfolios.find(p => 
+          const portfolioName = portfolios.find(p =>
             (p.portfolio_id || p.id) === portfolioId
           )?.name || 'this portfolio';
-          
+
           alert(`❌ ERROR: Cannot edit issue. This portfolio "${portfolioName}" (Hour ${issueHour}) is currently locked by "${lockedBy}".\n\nOnly the person who has the portfolio locked can edit issues in it.`);
           return; // Block editing
         }
       }
     }
-    
+
     setEditingIssue(issue);
     setShowEditModal(true);
   };
@@ -1807,7 +1769,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         case_number: issueData.case_number,
         monitored_by: issueData.monitored_by,
         issues_missed_by: issueData.issues_missed_by,
-        updated_at: new Date().toISOString()
+        updated_at: getNewYorkDate().toISOString()
       };
 
       const { error } = await supabase
@@ -1834,7 +1796,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       return;
     }
 
-    const portfolioName = portfolios.find(p => 
+    const portfolioName = portfolios.find(p =>
       (p.portfolio_id || p.id) === issue.portfolio_id
     )?.name || 'Unknown Portfolio';
 
@@ -1843,7 +1805,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       `Hour: ${issue.issue_hour}\n` +
       `Monitored By: ${issue.monitored_by || 'N/A'}\n` +
       `Issue: ${issue.issue_details || 'No issue'}\n\n` +
-      'This action cannot be undone!';
+      `This action cannot be undone!`;
 
     if (!window.confirm(confirmMessage)) {
       return;
@@ -1949,10 +1911,10 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 </div>
               </div>
             </div>
-            
+
             {/* Admin Panel Button - Only visible to admins */}
             {isAdmin && (
-              <button 
+              <button
                 onClick={handleAdminButtonClick}
                 className="px-5 py-2 bg-green-700 text-white rounded hover:bg-green-800 text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
               >
@@ -1963,9 +1925,9 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 Admin Panel
               </button>
             )}
-            
+
             {/* Logout Button */}
-            <button 
+            <button
               onClick={handleLogout}
               className="px-5 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-colors flex items-center gap-2"
             >
@@ -1974,9 +1936,9 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
               </svg>
               Logout
             </button>
-            
+
             <div className="text-center px-4 py-2 rounded" style={{ backgroundColor: '#E8F5E0' }}>
-              <div className="text-xs text-gray-600">Current Hour (EST)</div>
+              <div className="text-xs text-gray-600">Current Hour</div>
               <div className="text-2xl font-bold" style={{ color: '#76AB3F' }}>{currentHour}</div>
             </div>
           </div>
@@ -1989,44 +1951,39 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           <div className="flex gap-8">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                activeTab === 'dashboard' ? 'border-b-2 border-white' : ''
-              }`}
+              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${activeTab === 'dashboard' ? 'border-b-2 border-white' : ''
+                }`}
             >
               Dashboard & Log Issues
             </button>
             <button
               onClick={() => setActiveTab('issueDetails')}
-              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                activeTab === 'issueDetails' ? 'border-b-2 border-white' : ''
-              }`}
+              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${activeTab === 'issueDetails' ? 'border-b-2 border-white' : ''
+                }`}
             >
               Issue Details
             </button>
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('performance')}
-                className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                  activeTab === 'performance' ? 'border-b-2 border-white' : ''
-                }`}
+                className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${activeTab === 'performance' ? 'border-b-2 border-white' : ''
+                  }`}
               >
                 Performance Analytics
               </button>
             )}
             <button
               onClick={() => setActiveTab('issuesByUser')}
-              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                activeTab === 'issuesByUser' ? 'border-b-2 border-white' : ''
-              }`}
+              className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${activeTab === 'issuesByUser' ? 'border-b-2 border-white' : ''
+                }`}
             >
               Issues by User
             </button>
             {isAdmin && (
               <button
                 onClick={() => setActiveTab('portfolioMatrix')}
-                className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${
-                  activeTab === 'portfolioMatrix' ? 'border-b-2 border-white' : ''
-                }`}
+                className={`py-3 px-1 font-medium text-sm text-white hover:bg-[#689E36] ${activeTab === 'portfolioMatrix' ? 'border-b-2 border-white' : ''
+                  }`}
               >
                 Coverage Matrix
               </button>
@@ -2045,7 +2002,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">Quick Portfolio Reference</h2>
                   <p className="text-xs text-gray-500 mt-1">
-                    Last updated (EST): {formatAppTime(lastRefresh)} (Auto-refreshes every 15s for real-time sync)
+                    Last updated: {lastRefresh.toLocaleTimeString('en-US', { timeZone: 'America/New_York' })} (Auto-refreshes every 3s for real-time sync)
                     {isAutoRefreshing && <span className="ml-2 text-blue-600">🔄 Refreshing...</span>}
                   </p>
                   <div className="flex gap-6 mt-2 text-xs">
@@ -2118,111 +2075,115 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
 
               {/* Portfolio Cards Grid */}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-1.5 overflow-visible">
-                  {portfolioCards
-                    .filter(portfolio => 
-                      portfolio.name.toLowerCase().includes(portfolioSearchTerm.toLowerCase())
-                    )
-                    .map((portfolio) => {
-                  const status = getPortfolioStatus(portfolio.name);
-                  const reservation = getPortfolioReservation(portfolio.name);
-                  // Determine card styling based on reservation
-                  // Only show purple border when locked, no other borders
-                  let cardColor = status.color;
-                  let cardBorder = ''; // No border by default
-                  let cardTextColor = status.textColor;
-                  
-                  // Check if portfolio is green (all sites checked + updated)
-                  const sitesConfirmed = isPortfolioSitesChecked(portfolio.name);
-                  const isGreenStatus = sitesConfirmed && status.color.includes('green');
-                  
-                  // PRIORITY 1: If locked, ALWAYS show PURPLE BORDER (thick) - regardless of green status
-                  // CRITICAL: Lock status takes priority - purple border should always show when locked
-                  if (reservation) {
-                    cardBorder = 'border-[6px] border-purple-600 !border-purple-600';
-                    console.log(`🔒 Showing purple border for locked portfolio: ${portfolio.name}`, {
-                      reservation,
-                      isGreenStatus,
-                      sitesConfirmed
-                    });
-                  }
-                  
-                  // Get last activity hour
-                  const lastActivityHour = getLastActivityHour(portfolio.name);
-                  
-                  // Get sites for this portfolio
-                  const portfolioSites = getPortfolioSites(portfolio);
-                  
-                  // Debug: Log for Mid Atlantic 1 specifically
-                  if (portfolio.name === 'Mid Atlantic 1') {
-                    console.log('🔍 Mid Atlantic 1 in render:', {
-                      name: portfolio.name,
-                      site_range: portfolio.site_range,
-                      portfolioSites: portfolioSites,
-                      portfolioObject: portfolio
-                    });
-                  }
-                  
-                  const isHovered = hoveredPortfolio === portfolio.name;
-                  
-                  return (
-                    <div
-                      key={portfolio.name}
-                      onClick={() => handlePortfolioClick(portfolio.name)}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const viewportHeight = window.innerHeight;
-                        const spaceAbove = rect.top;
-                        const spaceBelow = viewportHeight - rect.bottom;
-                        
-                        // Show tooltip above if there's more space above, otherwise below
-                        const showAbove = spaceAbove > spaceBelow;
-                        
-                        setHoveredPortfolio(portfolio.name);
-                        setTooltipPosition({
-                          top: showAbove ? rect.top - 10 : rect.bottom + 10,
-                          left: rect.left + rect.width / 2,
-                          showAbove: showAbove
-                        });
-                      }}
-                      onMouseLeave={() => {
-                        setHoveredPortfolio(null);
-                        setTooltipPosition(null);
-                      }}
-                      className={`px-1.5 py-2.5 rounded ${cardColor} ${cardBorder} transition-all hover:shadow-md cursor-pointer relative group overflow-visible`}
-                    >
-                      {/* Last Activity Hour - Top Right Corner - Always Visible */}
-                      {lastActivityHour !== null ? (
-                        <div className={`absolute top-0.5 right-0.5 px-1 py-0.5 rounded text-[9px] font-semibold z-10 ${
-                          lastActivityHour.isYesterday 
-                            ? 'bg-blue-700 text-white' 
+                {portfolioCards
+                  .filter(portfolio =>
+                    portfolio.name.toLowerCase().includes(portfolioSearchTerm.toLowerCase())
+                  )
+                  .map((portfolio) => {
+                    const status = getPortfolioStatus(portfolio.name);
+                    const reservation = getPortfolioReservation(portfolio.name);
+
+                    // Get latest issue for this portfolio to show who logged it (used in tooltip)
+                    const latestIssue = getLatestIssueForPortfolio(portfolio.name);
+                    const loggedBy = latestIssue?.monitored_by || 'No data';
+
+                    // Determine card styling based on reservation
+                    // Only show purple border when locked, no other borders
+                    let cardColor = status.color;
+                    let cardBorder = ''; // No border by default
+                    let cardTextColor = status.textColor;
+
+                    // Check if portfolio is green (all sites checked + updated)
+                    const sitesConfirmed = isPortfolioSitesChecked(portfolio.name);
+                    const isGreenStatus = sitesConfirmed && status.color.includes('green');
+
+                    // PRIORITY 1: If locked, ALWAYS show PURPLE BORDER (thick) - regardless of green status
+                    // CRITICAL: Lock status takes priority - purple border should always show when locked
+                    if (reservation) {
+                      cardBorder = 'border-[6px] border-purple-600 !border-purple-600';
+                      console.log(`🔒 Showing purple border for locked portfolio: ${portfolio.name}`, {
+                        reservation,
+                        isGreenStatus,
+                        sitesConfirmed
+                      });
+                    }
+
+                    // Get last activity hour
+                    const lastActivityHour = getLastActivityHour(portfolio.name);
+
+                    // Get sites for this portfolio
+                    const portfolioSites = getPortfolioSites(portfolio);
+
+                    // Debug: Log for Mid Atlantic 1 specifically
+                    if (portfolio.name === 'Mid Atlantic 1') {
+                      console.log('🔍 Mid Atlantic 1 in render:', {
+                        name: portfolio.name,
+                        site_range: portfolio.site_range,
+                        portfolioSites: portfolioSites,
+                        portfolioObject: portfolio
+                      });
+                    }
+
+                    const isHovered = hoveredPortfolio === portfolio.name;
+
+                    return (
+                      <div
+                        key={portfolio.name}
+                        onClick={() => handlePortfolioClick(portfolio.name)}
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const viewportHeight = window.innerHeight;
+                          const spaceAbove = rect.top;
+                          const spaceBelow = viewportHeight - rect.bottom;
+
+                          // Show tooltip above if there's more space above, otherwise below
+                          const showAbove = spaceAbove > spaceBelow;
+
+                          setHoveredPortfolio(portfolio.name);
+                          setTooltipPosition({
+                            top: showAbove ? rect.top - 10 : rect.bottom + 10,
+                            left: rect.left + rect.width / 2,
+                            showAbove: showAbove
+                          });
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredPortfolio(null);
+                          setTooltipPosition(null);
+                        }}
+                        className={`px-1.5 py-2.5 rounded ${cardColor} ${cardBorder} transition-all hover:shadow-md cursor-pointer relative group overflow-visible`}
+                      >
+                        {/* Last Activity Hour - Top Right Corner - Always Visible */}
+                        {lastActivityHour !== null ? (
+                          <div className={`absolute top-0.5 right-0.5 px-1 py-0.5 rounded text-[9px] font-semibold z-10 ${lastActivityHour.isYesterday
+                            ? 'bg-blue-700 text-white'
                             : 'bg-gray-800 text-white'
-                        }`}>
-                          {lastActivityHour.isYesterday ? `Y ${lastActivityHour.hour}` : `H ${lastActivityHour.hour}`}
+                            }`}>
+                            {lastActivityHour.isYesterday ? `Y ${lastActivityHour.hour}` : `H ${lastActivityHour.hour}`}
+                          </div>
+                        ) : (
+                          <div className="absolute top-0.5 right-0.5 bg-gray-800 text-white px-1 py-0.5 rounded text-[9px] font-semibold z-10">
+                            H -
+                          </div>
+                        )}
+
+                        <div className="font-semibold text-[11px] sm:text-xs text-gray-900 leading-tight">
+                          {portfolio.name}
                         </div>
-                      ) : (
-                        <div className="absolute top-0.5 right-0.5 bg-gray-800 text-white px-1 py-0.5 rounded text-[9px] font-semibold z-10">
-                          H -
+                        <div className="text-[10px] text-gray-600 mt-1">
+                          {portfolio.subtitle}
                         </div>
-                      )}
-                      
-                      <div className="font-semibold text-[11px] sm:text-xs text-gray-900 leading-tight">
-                        {portfolio.name}
-                      </div>
-                      <div className="text-[10px] text-gray-600 mt-1">
-                        {portfolio.subtitle}
-                      </div>
-                      
-                      {/* Click indicator - shows on hover */}
-                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                        <div className={`${reservation ? 'bg-purple-600' : 'bg-blue-500'} text-white px-2 py-1 rounded text-xs font-medium`}>
-                          Click for options
+
+                        {/* Click indicator - shows on hover */}
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                          <div className={`${reservation ? 'bg-purple-600' : 'bg-blue-500'} text-white px-2 py-1 rounded text-xs font-medium`}>
+                            Click for options
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
-              
+
             </div>
 
             {/* Hourly Coverage Analysis */}
@@ -2237,8 +2198,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 monitoredPersonnel={monitoredPersonnel}
                 currentHour={currentHour}
                 onRefresh={async () => {
-                  // CRITICAL: Refresh both data and reservations after logging issue
-                  await fetchData();
+                  // CRITICAL FIX: Use fetchData(true) to prevent unmounting and form data loss
+                  await fetchData(true);
                   await fetchActiveReservations();
                   await fetchDataBackground();
                 }}
@@ -2251,16 +2212,16 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         )}
 
         {activeTab === 'performance' && (
-          <PerformanceAnalytics 
-            issues={issues} 
-            portfolios={portfolios} 
+          <PerformanceAnalytics
+            issues={issues}
+            portfolios={portfolios}
             userDisplayMap={userDisplayMap}
           />
         )}
 
         {activeTab === 'issuesByUser' && (
-          <IssuesByUser 
-            issues={issues} 
+          <IssuesByUser
+            issues={issues}
             portfolios={portfolios}
             monitoredPersonnel={monitoredPersonnel}
             userDisplayMap={userDisplayMap}
@@ -2350,9 +2311,8 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                       </p>
                     </div>
                     <span
-                      className={`text-sm font-semibold ${
-                        selectedPortfolioSitesChecked ? 'text-green-600' : 'text-yellow-600'
-                      }`}
+                      className={`text-sm font-semibold ${selectedPortfolioSitesChecked ? 'text-green-600' : 'text-yellow-600'
+                        }`}
                     >
                       {selectedPortfolioSitesChecked ? 'Yes' : 'No'}
                     </span>
@@ -2365,11 +2325,10 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                       }}
                       disabled={updatingSitesCheckPortfolio === selectedPortfolioForAction || isPortfolioLockedByOther}
                       title={isPortfolioLockedByOther ? `Only ${portfolioLockedBy} can mark this portfolio as complete. They must lock it first, log issues, then mark "All Sites Checked" = Yes.` : 'Mark all sites as checked'}
-                      className={`flex-1 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-                        selectedPortfolioSitesChecked
-                          ? 'bg-green-600 text-white border-green-600'
-                          : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
-                      } ${(updatingSitesCheckPortfolio === selectedPortfolioForAction || isPortfolioLockedByOther) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      className={`flex-1 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${selectedPortfolioSitesChecked
+                        ? 'bg-green-600 text-white border-green-600'
+                        : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
+                        } ${(updatingSitesCheckPortfolio === selectedPortfolioForAction || isPortfolioLockedByOther) ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       Yes
                     </button>
@@ -2379,39 +2338,38 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                         updatePortfolioSitesChecked(selectedPortfolioForAction, false);
                       }}
                       disabled={updatingSitesCheckPortfolio === selectedPortfolioForAction}
-                      className={`flex-1 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-                        selectedPortfolioSitesChecked === false
-                          ? 'bg-yellow-500 text-white border-yellow-500'
-                          : 'border-gray-300 text-gray-700 hover:border-yellow-500 hover:text-yellow-600'
-                      } ${updatingSitesCheckPortfolio === selectedPortfolioForAction ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      className={`flex-1 px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${selectedPortfolioSitesChecked === false
+                        ? 'bg-yellow-500 text-white border-yellow-500'
+                        : 'border-gray-300 text-gray-700 hover:border-yellow-500 hover:text-yellow-600'
+                        } ${updatingSitesCheckPortfolio === selectedPortfolioForAction ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                       No
                     </button>
                   </div>
-                  
+
                   {/* Display saved sites checked details - Always visible to all users when "No" is selected */}
-                  {selectedPortfolioRecord?.sites_checked_details && 
-                   (selectedPortfolioSitesChecked === false || showSitesCheckedInput) && (
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="text-xs font-semibold text-gray-700 mb-1">Sites Checked Details:</div>
-                      <div className="text-sm text-gray-800">{selectedPortfolioRecord.sites_checked_details}</div>
-                    </div>
-                  )}
-                  
+                  {selectedPortfolioRecord?.sites_checked_details &&
+                    (selectedPortfolioSitesChecked === false || showSitesCheckedInput) && (
+                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="text-xs font-semibold text-gray-700 mb-1">Sites Checked Details:</div>
+                        <div className="text-sm text-gray-800">{selectedPortfolioRecord.sites_checked_details}</div>
+                      </div>
+                    )}
+
                   {/* Text input for sites checked when "No" is selected */}
                   {(selectedPortfolioSitesChecked === false || showSitesCheckedInput) && (
                     <div className="mt-4">
                       <label className="block text-xs font-medium text-gray-700 mb-2">
-                        {selectedPortfolioRecord?.sites_checked_details 
-                          ? 'Update sites checked details (e.g., "Site 1 to Site 5", "Sites 1-10")'
-                          : 'Which sites have you checked? (e.g., "Site 1 to Site 5", "Sites 1-10")'
+                        {selectedPortfolioRecord?.sites_checked_details
+                          ? "Update sites checked details (e.g., \"Site 1 to Site 5\", \"Sites 1-10\")"
+                          : "Which sites have you checked? (e.g., \"Site 1 to Site 5\", \"Sites 1-10\")"
                         }
                       </label>
                       <input
                         type="text"
                         value={sitesCheckedText}
                         onChange={(e) => setSitesCheckedText(e.target.value)}
-                        placeholder={selectedPortfolioRecord?.sites_checked_details 
+                        placeholder={selectedPortfolioRecord?.sites_checked_details
                           ? "Update sites checked details..."
                           : "Enter sites checked (e.g., Site 1 to Site 5)"
                         }
@@ -2426,7 +2384,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                       />
                     </div>
                   )}
-                  
+
                   {sitesCheckError && (
                     <div className="mt-3 text-xs text-red-600">
                       {sitesCheckError}
@@ -2471,21 +2429,19 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                     handleLogIssue();
                   }}
                   disabled={isPortfolioLockedByOther}
-                  className={`w-full flex items-center justify-between p-4 border-2 rounded-lg transition-all ${
-                    isPortfolioLockedByOther
-                      ? 'bg-gray-50 border-gray-300 cursor-not-allowed opacity-60'
-                      : 'bg-green-50 hover:bg-green-100 border-green-200 hover:border-green-300'
-                  }`}
+                  className={`w-full flex items-center justify-between p-4 border-2 rounded-lg transition-all ${isPortfolioLockedByOther
+                    ? 'bg-gray-50 border-gray-300 cursor-not-allowed opacity-60'
+                    : 'bg-green-50 hover:bg-green-100 border-green-200 hover:border-green-300'
+                    }`}
                   title={isPortfolioLockedByOther ? `This portfolio is locked by ${portfolioLockedBy}. Only they can log issues.` : ''}
-                  style={{ 
+                  style={{
                     pointerEvents: isPortfolioLockedByOther ? 'none' : 'auto',
                     cursor: isPortfolioLockedByOther ? 'not-allowed' : 'pointer'
                   }}
                 >
                   <div className="flex items-center">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 ${
-                      isPortfolioLockedByOther ? 'bg-gray-400' : 'bg-green-500'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 ${isPortfolioLockedByOther ? 'bg-gray-400' : 'bg-green-500'
+                      }`}>
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         {isPortfolioLockedByOther ? (
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -2499,10 +2455,10 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                         Log New Issue
                       </div>
                       <div className={`text-sm ${isPortfolioLockedByOther ? 'text-gray-400' : 'text-gray-600'}`}>
-                        {isPortfolioLockedByOther 
+                        {isPortfolioLockedByOther
                           ? (portfolioLockedBy === 'No lock - must lock first'
-                              ? 'You must lock this portfolio first before logging issues'
-                              : `Locked by ${portfolioLockedBy} - Only they can log issues`)
+                            ? 'You must lock this portfolio first before logging issues'
+                            : `Locked by ${portfolioLockedBy} - Only they can log issues`)
                           : 'Report a new issue for this portfolio'
                         }
                       </div>
@@ -2581,13 +2537,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           onClose={async () => {
             setSessionPortfolioName(null);
             setSessionHour(null);
-            // CRITICAL FIX: Refresh data when closing drawer to ensure all users see updates
-            await fetchData();
+            // CRITICAL FIX: Refresh data SILENTLY when closing drawer to prevent state loss in table
+            await fetchData(true);
             await fetchActiveReservations();
           }}
           onRefresh={async () => {
-            // CRITICAL FIX: Force full refresh when issues are added
-            await fetchData();
+            // CRITICAL FIX: Refresh data SILENTLY when drawer logs an issue
+            await fetchData(true);
             await fetchActiveReservations();
             // Also trigger background refresh to sync with other users
             await fetchDataBackground();
@@ -2599,15 +2555,16 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
       {hoveredPortfolio && tooltipPosition && (() => {
         const portfolio = portfolioCards.find(p => p.name === hoveredPortfolio);
         if (!portfolio) return null;
-        
+
+        const status = getPortfolioStatus(portfolio.name);
         const reservation = getPortfolioReservation(portfolio.name);
         const latestIssue = getLatestIssueForPortfolio(portfolio.name);
         const loggedBy = latestIssue?.monitored_by || 'No data';
         const lastActivityHour = latestIssue ? {
           hour: new Date(latestIssue.created_at).getHours(),
-          isYesterday: new Date(latestIssue.created_at).toDateString() !== new Date().toDateString()
+          isYesterday: getCurrentESTDateString() !== convertToEST(latestIssue.created_at).toISOString().split('T')[0]
         } : null;
-        
+
         // Always show tooltip, even if no data
         return (
           <div
@@ -2673,17 +2630,17 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           title="Back to top"
           aria-label="Scroll to top"
         >
-          <svg 
-            className="w-5 h-5 text-white group-hover:text-white transition-colors duration-300" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className="w-5 h-5 text-white group-hover:text-white transition-colors duration-300"
+            fill="none"
+            stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2.5} 
-              d="M5 10l7-7m0 0l7 7m-7-7v18" 
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2.5}
+              d="M5 10l7-7m0 0l7 7m-7-7v18"
             />
           </svg>
         </button>

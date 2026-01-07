@@ -1,8 +1,8 @@
-/* eslint-disable */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { getCurrentESTDateString, convertToEST, getNewYorkDate } from '../utils/dateUtils';
 
-const getTodayString = () => new Date().toISOString().split('T')[0];
+const getTodayString = () => getCurrentESTDateString();
 
 const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, currentHour, onRefresh, onEditIssue, onDeleteIssue, isAdmin = false }) => {
   const [filters, setFilters] = useState({
@@ -18,25 +18,75 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     toDate: getTodayString()
   });
 
-  // (formatDateDisplay / inputToISO were used by an older export UI and are no longer needed)
+  // Date helpers: display mmddyyyy, store ISO
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${mm}${dd}${yyyy}`;
+  };
+  const inputToISO = (val) => {
+    if (!val) return '';
+    const m = val.replace(/\D/g, '').match(/^(\d{2})(\d{2})(\d{4})$/);
+    if (!m) return '';
+    const [, mm, dd, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
-  const [formData, setFormData] = useState({
-    portfolio_id: '',
-    site_id: '',
-    issue_hour: currentHour,
-    issue_present: '',
-    issue_details: '',
-    case_number: '',
-    monitored_by: '',
-    issues_missed_by: '',
-    entered_by: 'System'
+  // CRITICAL: LocalStorage Key for Form Draft
+  const FORM_DRAFT_KEY = 'ticket_logging_form_draft';
+
+  const [formData, setFormData] = useState(() => {
+    // Try to load draft from localStorage
+    try {
+      const saved = localStorage.getItem(FORM_DRAFT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Ensure strictly required fields are present and valid
+        return {
+          ...parsed,
+          // Always reset entered_by to 'System' or current user context if needed
+          entered_by: 'System',
+          // Ensure we don't accidentally carry over a lock-related blocking state if logic changes
+          issue_hour: parsed.issue_hour || currentHour
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to load form draft:', e);
+    }
+    // Default Fallback
+    return {
+      portfolio_id: '',
+      site_id: '',
+      issue_hour: currentHour,
+      issue_present: '',
+      issue_details: '',
+      case_number: '',
+      monitored_by: '',
+      issues_missed_by: '',
+      entered_by: 'System'
+    };
   });
+
+  // Persist form data to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(formData));
+    } catch (e) {
+      console.error('Failed to save form draft:', e);
+    }
+  }, [formData]);
 
   const [submitError, setSubmitError] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(null);
   const [reservationError, setReservationError] = useState(null);
   const [reservationMessage, setReservationMessage] = useState(null);
   const [myReservation, setMyReservation] = useState(null);
+  const lastAutoLockedValues = useRef({ portfolioId: '', hour: '', monitor: '' });
+  const isInternalUpdate = useRef(false);
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
@@ -54,9 +104,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     monitored_by: selectedMonitor
   } = formData;
 
-  useEffect(() => {
-    setFormData(prev => ({ ...prev, issue_hour: currentHour }));
-  }, [currentHour]);
+  // REMOVED: Automatic hour reset effect that causes form clearing issues
+  // The hour is now initialized once on mount and updated only on successful submit
+  // or explicit manual change by the user.
 
   const ensureSessionId = () => {
     let sessionId = localStorage.getItem('session_id');
@@ -77,7 +127,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
 
   // AUTO-POPULATE MONITORED_BY WITH LOGGED-IN USER
   useEffect(() => {
-    
+
     setFormData(prev => ({
       ...prev,
       monitored_by: loggedInUser
@@ -86,13 +136,18 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
 
   // Listen for pre-selection event from portfolio card
   useEffect(() => {
-    const handlePreSelect = (event) => {
-      const { portfolio_id } = event.detail;
+    const handlePreSelect = (e) => {
+      const { portfolio_id } = e.detail;
+      console.log('📬 preSelectPortfolio event received:', portfolio_id);
+
+      // CRITICAL: Force auto-lock to re-trigger for this specific selection
+      lastAutoLockedValues.current = { portfolioId: '', hour: '', monitor: '' };
+
       // CRITICAL FIX: Ensure portfolio_id is set correctly (handle both UUID and integer types)
       if (portfolio_id) {
         setFormData(prev => ({ ...prev, portfolio_id: String(portfolio_id) }));
       }
-      
+
       // Highlight the form briefly
       const formElement = document.getElementById('issue-log-form');
       if (formElement) {
@@ -116,7 +171,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           .select('*')
           .eq('session_id', sessionId)
           .eq('issue_hour', currentHour) // CRITICAL: Only check current hour locks
-          .gt('expires_at', new Date().toISOString())
+          .gt('expires_at', getNewYorkDate().toISOString())
           .order('reserved_at', { ascending: false });
 
         if (error) {
@@ -142,7 +197,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         selectedIssueHour,
         selectedMonitor
       });
-      
+
       // Check if all required fields are selected
       if (!selectedPortfolioId || selectedIssueHour === '' || !selectedMonitor) {
         console.log('⏸️ Early return - missing fields');
@@ -156,7 +211,29 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       }
 
       const sessionId = ensureSessionId();
-      const nowIso = new Date().toISOString();
+      const nowIso = getNewYorkDate().toISOString();
+
+      // OPTIMIZATION: Only auto-lock if selection actually CHANGED or if forced
+      const currentValues = { portfolioId: selectedPortfolioId, hour: selectedIssueHour, monitor: selectedMonitor };
+      const hasChanged =
+        currentValues.portfolioId !== lastAutoLockedValues.current.portfolioId ||
+        currentValues.hour !== lastAutoLockedValues.current.hour ||
+        currentValues.monitor !== lastAutoLockedValues.current.monitor;
+
+      if (!hasChanged && myReservation) {
+        // Selection hasn't changed and we already have a lock - nothing to do
+        return;
+      }
+
+      // If selection hasn't changed and we DON'T have a lock, it means we recently UNLOCKED 
+      // or someone else has it. Don't grab it back automatically on every re-render/poll.
+      if (!hasChanged && !myReservation) {
+        console.log('ℹ️ Selection unchanged and no lock. Skipping auto-lock to prevent loop.');
+        return;
+      }
+
+      // Note: We no longer skip auto-lock if complete, allowing users to re-lock for further work.
+      // loop protection (lastAutoLockedValues) handles the case where we don't want to immediately re-lock after manual unlock.
 
       try {
         setReservationError(null);
@@ -164,7 +241,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         // CRITICAL: Only get reservations that EXACTLY match current user's session_id
         // This ensures we only check the current user's own locks, not other users' locks
         const currentSessionIdStr = String(sessionId || '').trim();
-        
+
         // DEBUG: Log what we're searching for - ALWAYS SHOW THIS
         console.log('========================================');
         console.log('🔍 LOCK CHECK STARTED');
@@ -172,12 +249,12 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         console.log('Trying to lock Portfolio:', selectedPortfolioId);
         console.log('Trying to lock Hour:', parsedHour);
         console.log('========================================');
-        
+
         const { data: sessionReservations, error: sessionError } = await supabase
           .from('hour_reservations')
           .select('*')
           .eq('session_id', currentSessionIdStr)  // Only get MY reservations - exact match
-          .eq('issue_hour', currentHour)           // CRITICAL: Only check current hour locks
+          .eq('issue_hour', parsedHour)           // FIXED: Check locks for the SELECTED hour, not current system hour
           .gt('expires_at', nowIso)                // Only get active (not expired) reservations
           .order('reserved_at', { ascending: false });
 
@@ -208,10 +285,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             const rMonitoredBy = String(r.monitored_by || '').trim();
             const sessionMatches = rSessionId === currentSessionIdStr;
             const userMatches = rMonitoredBy === loggedInUser;
-            
+
             // BOTH must match for it to be truly YOUR reservation
             const matches = sessionMatches && userMatches;
-            
+
             if (!matches && r) {
               // Log if we found a reservation that doesn't match
               console.error('❌ CRITICAL: Found reservation that is NOT mine!', {
@@ -250,7 +327,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           const sessionMatches = reservationSessionId === currentSessionIdStr;
           const userMatches = reservationMonitoredBy === loggedInUser;
           const finalCheck = sessionMatches && userMatches;
-          
+
           console.log('🔐 Final check before setting myReservation:', {
             reservationSessionId,
             currentSessionIdStr,
@@ -262,7 +339,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             portfolio: getPortfolioNameById(existingSessionReservation.portfolio_id),
             hour: existingSessionReservation.issue_hour
           });
-          
+
           if (finalCheck) {
             console.log('✅ Setting myReservation - it belongs to me (both session_id and user match)');
             setMyReservation(existingSessionReservation);
@@ -282,7 +359,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           console.log('ℹ️ No existing reservation found for my session and user');
           setMyReservation(null);
         }
-        
+
         // CRITICAL FIX: If we have a reservation, lock the hour to that reservation's hour
         if (existingSessionReservation && matchesExisting) {
           // Ensure form hour matches reservation hour
@@ -303,11 +380,11 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           const reservationSessionId = String(existingSessionReservation.session_id || '').trim();
           const currentSessionId = String(sessionId || '').trim();
           const reservationExpiresAt = new Date(existingSessionReservation.expires_at);
-          const isExpired = reservationExpiresAt <= new Date();
-          
+          const isExpired = reservationExpiresAt <= getNewYorkDate();
+
           // STRICT CHECK: Only block if session_id EXACTLY matches (case-sensitive, trimmed)
           const sessionMatches = reservationSessionId === currentSessionId;
-          
+
           // DEBUG: Log the check
           console.log('🔍 Lock Check:', {
             'Reservation Session ID': reservationSessionId,
@@ -319,20 +396,20 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             'Reservation Hour': existingSessionReservation.issue_hour,
             'Trying Hour': parsedHour
           });
-          
+
           if (sessionMatches && !isExpired) {
             // Check if the existing portfolio is COMPLETED (all_sites_checked = Yes)
-            const existingPortfolio = portfolios.find(p => 
+            const existingPortfolio = portfolios.find(p =>
               (p.portfolio_id || p.id) === existingSessionReservation.portfolio_id
             );
             const isCompleted = existingPortfolio?.all_sites_checked === true;
-            
+
             console.log('📋 Checking if existing portfolio is completed:', {
               portfolioName: existingPortfolio?.name,
               all_sites_checked: existingPortfolio?.all_sites_checked,
               isCompleted
             });
-            
+
             if (isCompleted) {
               // Portfolio is completed - allow locking a new portfolio
               // Automatically release the old lock since it's completed
@@ -342,7 +419,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   .from('hour_reservations')
                   .delete()
                   .eq('id', existingSessionReservation.id);
-                
+
                 if (deleteError) {
                   console.warn('Error releasing completed portfolio lock:', deleteError);
                 } else {
@@ -401,11 +478,11 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             const rMonitoredBy = String(reservation.monitored_by || '').trim();
             const mySessionId = String(sessionId || '').trim();
             const myUser = String(loggedInUser || '').trim();
-            
+
             // It's a conflict if session_id OR monitored_by doesn't match
             const sessionDiffers = rSessionId !== mySessionId;
             const userDiffers = rMonitoredBy.toLowerCase() !== myUser.toLowerCase();
-            
+
             return sessionDiffers || userDiffers;
           }
         );
@@ -416,10 +493,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           const conflictingMonitoredBy = String(conflictingReservation.monitored_by || '').trim();
           const currentSessionId = String(sessionId || '').trim();
           const currentUser = String(loggedInUser || '').trim();
-          
+
           const sessionMatches = conflictingSessionId === currentSessionId;
           const userMatches = conflictingMonitoredBy.toLowerCase() === currentUser.toLowerCase();
-          
+
           // If BOTH session_id AND monitored_by match, it's our own lock - allow update
           if (sessionMatches && userMatches) {
             // This is our own lock - update it instead of blocking
@@ -427,11 +504,11 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
               .from('hour_reservations')
               .update({ monitored_by: selectedMonitor })
               .eq('id', conflictingReservation.id);
-            
+
             if (updateError) {
               throw updateError;
             }
-            
+
             setMyReservation({
               ...conflictingReservation,
               monitored_by: selectedMonitor
@@ -439,11 +516,11 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             setReservationMessage('Portfolio locked for you. Complete the checklist to move on.');
             return;
           }
-          
+
           // Someone else has it locked - BLOCK creating a new lock
           const portfolioName = getPortfolioNameById(selectedPortfolioId);
           const lockedBy = String(conflictingReservation.monitored_by || 'another user').trim();
-          
+
           console.error('❌ BLOCKED: Cannot create lock - portfolio is locked by someone else', {
             lockedBy,
             myUser: currentUser,
@@ -455,7 +532,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             conflictingMonitoredBy,
             userMatches
           });
-          
+
           // ADMIN OVERRIDE: Admins can override existing locks
           if (isAdmin) {
             // Delete the conflicting reservation to allow admin to lock
@@ -463,13 +540,13 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
               .from('hour_reservations')
               .delete()
               .eq('id', conflictingReservation.id);
-            
+
             if (deleteError) {
               console.error('Error deleting conflicting reservation:', deleteError);
               setReservationError('Unable to override existing lock. Please try again.');
               return;
             }
-            
+
             console.log('✅ Admin override: Deleted conflicting lock');
             // Continue to create new reservation below
           } else {
@@ -490,10 +567,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         if (matchesExisting) {
           if (existingSessionReservation.monitored_by !== selectedMonitor) {
             const { error: updateError } = await supabase
-            .from('hour_reservations')
+              .from('hour_reservations')
               .update({ monitored_by: selectedMonitor })
               .eq('id', existingSessionReservation.id);
-          
+
             if (updateError) {
               throw updateError;
             }
@@ -510,10 +587,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         }
 
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-          
+
         const { data: insertedRows, error: insertError } = await supabase
-            .from('hour_reservations')
-            .insert([{
+          .from('hour_reservations')
+          .insert([{
             portfolio_id: selectedPortfolioId,
             issue_hour: parsedHour,
             monitored_by: selectedMonitor,
@@ -529,23 +606,30 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         const insertedReservation = insertedRows && insertedRows.length > 0
           ? insertedRows[0]
           : {
-              portfolio_id: selectedPortfolioId,
-              issue_hour: parsedHour,
-              monitored_by: selectedMonitor,
-              session_id: sessionId,
-              expires_at: expiresAt
-            };
+            portfolio_id: selectedPortfolioId,
+            issue_hour: parsedHour,
+            monitored_by: selectedMonitor,
+            session_id: sessionId,
+            expires_at: expiresAt
+          };
 
         setMyReservation(insertedReservation);
         setReservationMessage('Portfolio locked for the current hour. Log the issue and mark all sites checked to release.');
-        } catch (error) {
-          console.error('Reservation error:', error.message);
-          setReservationError(error.message || 'Unable to lock portfolio right now.');
+
+        // Update last auto-locked values to prevent immediate re-locking on same selection
+        lastAutoLockedValues.current = {
+          portfolioId: selectedPortfolioId,
+          hour: selectedIssueHour,
+          monitor: selectedMonitor
+        };
+      } catch (error) {
+        console.error('Reservation error:', error.message);
+        setReservationError(error.message || 'Unable to lock portfolio right now.');
       }
     };
 
     manageReservation();
-  }, [selectedPortfolioId, selectedIssueHour, selectedMonitor]);
+  }, [selectedPortfolioId, selectedIssueHour, selectedMonitor, portfolios]);
 
   useEffect(() => {
     if (!reservationMessage) return;
@@ -568,7 +652,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
   };
 
   const setQuickExportRange = (range) => {
-    const today = new Date();
+    const today = getNewYorkDate();
     const todayStr = getTodayString();
 
     if (range === 'today') {
@@ -615,7 +699,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       // Don't allow hour change when locked - keep it at reservation hour
       return;
     }
-    
+
     setFormData(prev => ({ ...prev, [name]: value }));
 
     if (name === 'issue_present') {
@@ -652,7 +736,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
       // Get portfolio name from issue or lookup from portfolios array
       let portfolioName = issue.portfolio_name || '';
       if (!portfolioName && issue.portfolio_id) {
-        const portfolio = portfolios.find(p => 
+        const portfolio = portfolios.find(p =>
           (p.portfolio_id || p.id) === issue.portfolio_id
         );
         portfolioName = portfolio?.name || '';
@@ -696,7 +780,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
 
   const handleExportAllIssues = () => {
     const filteredByRange = issues.filter(issue => {
-      const issueDate = new Date(issue.created_at).toISOString().split('T')[0];
+      const issueDate = convertToEST(issue.created_at).toISOString().split('T')[0];
       if (exportFilters.fromDate && issueDate < exportFilters.fromDate) return false;
       if (exportFilters.toDate && issueDate > exportFilters.toDate) return false;
       return true;
@@ -705,16 +789,16 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     const suffix =
       exportFilters.fromDate && exportFilters.toDate
         ? `${exportFilters.fromDate}_to_${exportFilters.toDate}`
-        : new Date().toISOString().split('T')[0];
+        : getCurrentESTDateString();
 
     exportToCSV(filteredByRange, `all_issues_${suffix}.csv`);
   };
 
   const handleExportIssuesWithYes = () => {
-    const issuesWithYes = issues.filter(issue => 
+    const issuesWithYes = issues.filter(issue =>
       (issue.issue_present || '').toString().toLowerCase() === 'yes'
     ).filter(issue => {
-      const issueDate = new Date(issue.created_at).toISOString().split('T')[0];
+      const issueDate = convertToEST(issue.created_at).toISOString().split('T')[0];
       if (exportFilters.fromDate && issueDate < exportFilters.fromDate) return false;
       if (exportFilters.toDate && issueDate > exportFilters.toDate) return false;
       return true;
@@ -723,7 +807,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
     const suffix =
       exportFilters.fromDate && exportFilters.toDate
         ? `${exportFilters.fromDate}_to_${exportFilters.toDate}`
-        : new Date().toISOString().split('T')[0];
+        : getCurrentESTDateString();
 
     exportToCSV(issuesWithYes, `issues_with_yes_${suffix}.csv`);
   };
@@ -731,21 +815,37 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
   const handleSubmit = async () => {
     setSubmitError(null);
     setSubmitSuccess(null);
-    
+
     // VALIDATION STEP 1: Portfolio
     if (!formData.portfolio_id || formData.portfolio_id === '') {
       alert('ERROR: Please select a Portfolio');
       return;
     }
 
-    // Removed lock validation - issues can now be saved regardless of lock status
+    // CRITICAL: Lock validation - MUST have a lock to log an issue
+    if (!myReservation) {
+      alert('❌ ERROR: You must lock this portfolio before logging an issue. Please select a portfolio, hour, and yourself as the monitor to acquire a lock.');
+      return;
+    }
+
+    // Verify the lock matches the current selection (safeguard)
+    const currentSessionId = ensureSessionId();
+    if (String(myReservation.session_id) !== String(currentSessionId) ||
+      String(myReservation.portfolio_id) !== String(formData.portfolio_id) ||
+      parseInt(myReservation.issue_hour, 10) !== parseInt(formData.issue_hour, 10)) {
+      alert('❌ ERROR: Lock mismatch. Please refresh and try again.');
+      return;
+    }
+
+    const parsedHour = parseInt(formData.issue_hour, 10);
+
     // VALIDATION STEP 2: Issue Present (CRITICAL!)
     const issuePresent = String(formData.issue_present).trim();
     if (!issuePresent || issuePresent === '') {
       alert('❌ ERROR: Please select "Yes" or "No" for Issue Present');
       return;
     }
-    
+
     if (issuePresent !== 'Yes' && issuePresent !== 'No') {
       alert(`❌ ERROR: Invalid Issue Present value. Must be "Yes" or "No"`);
       return;
@@ -769,8 +869,8 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         site_id: formData.site_id && formData.site_id !== '' ? formData.site_id : null,
         issue_hour: parseInt(formData.issue_hour, 10),
         issue_present: issuePresent, // GUARANTEED to be 'Yes' or 'No'
-        issue_details: formData.issue_details && formData.issue_details.trim() !== '' 
-          ? formData.issue_details.trim() 
+        issue_details: formData.issue_details && formData.issue_details.trim() !== ''
+          ? formData.issue_details.trim()
           : (issuePresent === 'No' ? 'No issue' : null),
         case_number: formData.case_number && formData.case_number.trim() !== '' ? formData.case_number.trim() : null,
         monitored_by: formData.monitored_by && formData.monitored_by !== '' ? formData.monitored_by : null,
@@ -778,7 +878,7 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         entered_by: formData.entered_by || 'System'
       };
 
-      const { /* data, */ error } = await supabase
+      const { data, error } = await supabase
         .from('issues')
         .insert([dataToInsert])
         .select();
@@ -788,30 +888,38 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         throw error;
       }
 
-      
+
       // IMPORTANT: Do NOT release lock after logging issue
       // User should be able to log multiple issues with a single lock
       // Lock will only be released when:
       // 1. User marks "All Sites Checked" = Yes
       // 2. Hour changes (automatic)
       // 3. Admin manually removes lock
-      
+
       setSubmitSuccess('Issue logged successfully!');
-      
+
       // Get logged-in user to preserve after reset
       // Reset form but preserve monitored_by
-      setFormData({
-        portfolio_id: '',
+
+      // CRITICAL: Clear the saved draft from localStorage on success
+      localStorage.removeItem(FORM_DRAFT_KEY);
+
+      setFormData(prev => ({
+        ...prev,
+        // PRESERVE LOCK STATE: Keep portfolio and hour selected so user can log multiple issues
+        portfolio_id: prev.portfolio_id,
+        issue_hour: prev.issue_hour,
+        monitored_by: prev.monitored_by,
+
+        // RESET ISSUE DETAILS: Clear specific issue fields for the next entry
         site_id: '',
-        issue_hour: currentHour,
         issue_present: '',
         issue_details: '',
         case_number: '',
-        monitored_by: loggedInUser, // Keep logged-in user selected
         issues_missed_by: '',
         entered_by: 'System'
-      });
-      
+      }));
+
       // Refresh data to ensure all users see the new issue
       onRefresh();
     } catch (error) {
@@ -1074,9 +1182,8 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   name="portfolio_id"
                   value={formData.portfolio_id}
                   onChange={handleFormChange}
-                  className={`w-full px-3 py-2 border rounded text-sm focus:ring-green-500 focus:border-green-500 ${
-                    formData.portfolio_id ? 'border-green-500 bg-green-50' : 'border-gray-300'
-                  }`}
+                  className={`w-full px-3 py-2 border rounded text-sm focus:ring-green-500 focus:border-green-500 ${formData.portfolio_id ? 'border-green-500 bg-green-50' : 'border-gray-300'
+                    }`}
                 >
                   <option value="">Select Portfolio</option>
                   {portfolios.map(p => (
@@ -1097,17 +1204,67 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   max="23"
                   disabled={!!myReservation}
                   title={myReservation ? `Hour locked to ${myReservation.issue_hour} for this portfolio. Complete logging to unlock.` : ''}
-                  className={`w-20 px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500 ${
-                    myReservation ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
-                  }`}
+                  className={`w-20 px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500 ${myReservation ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''
+                    }`}
                 />
               </td>
               <td className="px-4 py-3">
+                {(() => {
+                  const today = getNewYorkDate().toISOString().split('T')[0];
+                  const currentPortfolio = portfolios.find(p => (p.portfolio_id || p.id) === formData.portfolio_id);
+                  const isComplete =
+                    currentPortfolio?.all_sites_checked &&
+                    parseInt(currentPortfolio?.all_sites_checked_hour, 10) === parseInt(formData.issue_hour, 10) &&
+                    currentPortfolio?.all_sites_checked_date === today;
+
+                  if (isComplete) {
+                    return (
+                      <div className="mb-2 p-2 bg-green-50 border border-green-200 rounded text-[10px] text-green-800">
+                        ✅ Portfolio complete for this hour.
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Are you sure you want to re-open this portfolio for more issues?')) return;
+                            try {
+                              await supabase
+                                .from('portfolios')
+                                .update({
+                                  all_sites_checked: false,
+                                  all_sites_checked_hour: null,
+                                  all_sites_checked_date: null,
+                                  all_sites_checked_by: null
+                                })
+                                .eq('portfolio_id', formData.portfolio_id);
+
+                              if (onRefresh) await onRefresh();
+                            } catch (err) {
+                              console.error('Error re-opening portfolio:', err);
+                              alert('Failed to re-open portfolio.');
+                            }
+                          }}
+                          className="ml-1 text-blue-600 hover:underline font-bold"
+                        >
+                          Re-open for work
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  if (!myReservation && formData.portfolio_id) {
+                    return (
+                      <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-[10px] text-yellow-800 animate-pulse">
+                        ⚠️ Lock required to log issues.
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <select
                   name="issue_present"
                   value={formData.issue_present}
                   onChange={handleFormChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
+                  disabled={!myReservation}
+                  className={`w-full px-3 py-2 border rounded text-sm focus:ring-green-500 focus:border-green-500 ${!myReservation ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-300'
+                    }`}
                 >
                   <option value="">Select</option>
                   <option value="Yes">Yes</option>
@@ -1120,17 +1277,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   name="issue_details"
                   value={formData.issue_details}
                   onChange={handleFormChange}
-                  onKeyDown={(e) => {
-                    // If Issue Present is "No", allow Enter to submit without clicking the Add button.
-                    // Use Shift+Enter to avoid accidental submission if user really wants a newline (even though it's a text input).
-                    if (e.key === 'Enter' && !e.shiftKey && formData.issue_present === 'No') {
-                      e.preventDefault();
-                      handleSubmit();
-                    }
-                  }}
-                  placeholder="Select issue present first"
-                  disabled={!formData.issue_present}
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  placeholder={!myReservation ? "Lock required" : "Select issue present first"}
+                  disabled={!myReservation || !formData.issue_present}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </td>
               <td className="px-4 py-3">
@@ -1140,7 +1289,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                   value={formData.case_number}
                   onChange={handleFormChange}
                   placeholder="Case #"
-                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-green-500 focus:border-green-500"
+                  disabled={!myReservation}
+                  className={`w-full px-3 py-2 border rounded text-sm focus:ring-green-500 focus:border-green-500 ${!myReservation ? 'bg-gray-100 cursor-not-allowed' : 'border-gray-300'
+                    }`}
                 />
               </td>
               <td className="px-4 py-3">
@@ -1182,7 +1333,9 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                 <button
                   onClick={handleSubmit}
                   type="button"
-                  className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 font-medium whitespace-nowrap"
+                  disabled={!myReservation}
+                  title={!myReservation ? "You must lock this portfolio to log issues" : "Log this issue"}
+                  className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 font-medium whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Log Ticket
                 </button>
@@ -1193,8 +1346,8 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
             {displayIssues.length === 0 ? (
               <tr>
                 <td colSpan="9" className="px-4 py-8 text-center text-gray-500">
-                  {filters.issueFilter === 'yes' 
-                    ? 'No issues with "Issue Present = Yes" found. Select "All Issues" to see all issues.' 
+                  {filters.issueFilter === 'yes'
+                    ? 'No issues with "Issue Present = Yes" found. Select "All Issues" to see all issues.'
                     : 'No issues found matching the filters'}
                 </td>
               </tr>
@@ -1208,11 +1361,10 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
                     {issue.issue_hour}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                      (issue.issue_present || '').toLowerCase() === 'yes' 
-                        ? 'bg-red-100 text-red-800' 
-                        : 'bg-green-100 text-green-800'
-                    }`}>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${(issue.issue_present || '').toLowerCase() === 'yes'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-green-100 text-green-800'
+                      }`}>
                       {(issue.issue_present || '').toLowerCase() === 'yes' ? 'Yes' : 'No'}
                     </span>
                   </td>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { convertToEST } from '../utils/dateUtils';
 
 const AdminLogWidget = ({ limit = 5 }) => {
   const [adminLogs, setAdminLogs] = useState([]);
@@ -64,32 +65,30 @@ const AdminLogWidget = ({ limit = 5 }) => {
         ) : (
           <div className="space-y-3">
             {adminLogs.map((log) => (
-              <div 
+              <div
                 key={log.log_id}
                 className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${
-                  log.action_type === 'portfolio_added' || log.action_type === 'user_added'
+                <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${log.action_type === 'portfolio_added' || log.action_type === 'user_added'
                     ? 'bg-green-500'
                     : log.action_type === 'portfolio_deleted' || log.action_type === 'user_deleted'
-                    ? 'bg-red-500'
-                    : log.action_type === 'system_alert'
-                    ? 'bg-yellow-500'
-                    : 'bg-blue-500'
-                }`}></div>
+                      ? 'bg-red-500'
+                      : log.action_type === 'system_alert'
+                        ? 'bg-yellow-500'
+                        : 'bg-blue-500'
+                  }`}></div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-semibold text-gray-900">{log.admin_name}</span>
                     <span className="text-xs text-gray-500">•</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${
-                      log.action_type === 'portfolio_added' || log.action_type === 'user_added'
+                    <span className={`text-xs px-2 py-0.5 rounded ${log.action_type === 'portfolio_added' || log.action_type === 'user_added'
                         ? 'bg-green-100 text-green-700'
                         : log.action_type === 'portfolio_deleted' || log.action_type === 'user_deleted'
-                        ? 'bg-red-100 text-red-700'
-                        : log.action_type === 'system_alert'
-                        ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-blue-100 text-blue-700'
-                    }`}>
+                          ? 'bg-red-100 text-red-700'
+                          : log.action_type === 'system_alert'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-blue-100 text-blue-700'
+                      }`}>
                       {log.action_type.replace(/_/g, ' ')}
                     </span>
                   </div>

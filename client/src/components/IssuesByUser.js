@@ -1,5 +1,5 @@
-/* eslint-disable */
 import React, { useState, useMemo } from 'react';
+import { getNewYorkDate, getCurrentESTDateString, convertToEST } from '../utils/dateUtils';
 
 const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onDeleteIssue, isAdmin = false }) => {
   const [filters, setFilters] = useState({
@@ -12,7 +12,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
-  
+
   // Performance Analytics Period Filtering
   const [analyticsPeriod, setAnalyticsPeriod] = useState('all'); // 'all', 'month', 'quarter', 'custom'
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -45,7 +45,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
     // Issue Present filter - default to "Active Issues" only
     if (filters.issueFilter === 'yes') {
-      filtered = filtered.filter(issue => 
+      filtered = filtered.filter(issue =>
         (issue.issue_present || '').toString().toLowerCase() === 'yes'
       );
     }
@@ -56,13 +56,13 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
     }
 
     if (filters.missedBy) {
-      filtered = filtered.filter(issue => 
+      filtered = filtered.filter(issue =>
         issue.issues_missed_by && issue.issues_missed_by.toLowerCase().includes(filters.missedBy.toLowerCase())
       );
     }
 
     if (filters.monitoredBy) {
-      filtered = filtered.filter(issue => 
+      filtered = filtered.filter(issue =>
         issue.monitored_by && issue.monitored_by.toLowerCase().includes(filters.monitoredBy.toLowerCase())
       );
     }
@@ -93,13 +93,13 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
   // Filter issues based on analytics period
   const filteredIssuesForAnalytics = useMemo(() => {
     let filtered = [...issues];
-    
+
     // Apply period filter
     if (analyticsPeriod === 'month' && selectedMonth) {
       const [year, month] = selectedMonth.split('-').map(Number);
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0, 23, 59, 59, 999);
-      
+
       filtered = filtered.filter(issue => {
         const issueDate = new Date(issue.created_at);
         return issueDate >= startDate && issueDate <= endDate;
@@ -109,7 +109,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
       const startMonth = (quarter - 1) * 3;
       const startDate = new Date(selectedYear, startMonth, 1);
       const endDate = new Date(selectedYear, startMonth + 3, 0, 23, 59, 59, 999);
-      
+
       filtered = filtered.filter(issue => {
         const issueDate = new Date(issue.created_at);
         return issueDate >= startDate && issueDate <= endDate;
@@ -119,32 +119,32 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
       start.setHours(0, 0, 0, 0);
       const end = new Date(customEndDate);
       end.setHours(23, 59, 59, 999);
-      
+
       filtered = filtered.filter(issue => {
         const issueDate = new Date(issue.created_at);
         return issueDate >= start && issueDate <= end;
       });
     }
-    
+
     // Apply individual user filter if selected
     if (selectedUserForAnalytics) {
-      filtered = filtered.filter(issue => 
-        issue.monitored_by === selectedUserForAnalytics || 
+      filtered = filtered.filter(issue =>
+        issue.monitored_by === selectedUserForAnalytics ||
         issue.issues_missed_by === selectedUserForAnalytics
       );
     }
-    
+
     return filtered;
   }, [issues, analyticsPeriod, selectedMonth, selectedQuarter, selectedYear, customStartDate, customEndDate, selectedUserForAnalytics]);
 
   // FIX 4: Hourly Report Card with User Performance Analytics
   const userPerformanceAnalytics = useMemo(() => {
-    const today = new Date();
+    const today = getNewYorkDate();
     today.setHours(0, 0, 0, 0);
-    
+
     // Use filtered issues for analytics
     const analyticsIssues = filteredIssuesForAnalytics;
-    
+
     // Get all unique users from both monitored_by and issues_missed_by
     const allUsers = new Set();
     analyticsIssues.forEach(issue => {
@@ -157,7 +157,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
       const monitoredIssues = analyticsIssues.filter(issue => issue.monitored_by === userName);
       const missedIssues = analyticsIssues.filter(issue => issue.issues_missed_by === userName);
       const issuesFoundByUser = monitoredIssues.filter(issue => issue.issue_present?.toLowerCase() === 'yes');
-      
+
       // Calculate hourly breakdown (0-23)
       const hourlyBreakdown = Array.from({ length: 24 }, (_, hour) => {
         const hourIssues = monitoredIssues.filter(issue => issue.issue_hour === hour);
@@ -170,7 +170,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
       // Calculate today's activity
       const todayIssues = monitoredIssues.filter(issue => {
-        const issueDate = new Date(issue.created_at);
+        const issueDate = convertToEST(issue.created_at);
         issueDate.setHours(0, 0, 0, 0);
         return issueDate.getTime() === today.getTime();
       });
@@ -184,7 +184,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
           if (!portfolioIssuesMap[portfolioName]) {
             portfolioIssuesMap[portfolioName] = [];
           }
-          const issueTime = issue.created_at ? new Date(issue.created_at) : new Date();
+          const issueTime = issue.created_at ? convertToEST(issue.created_at) : getNewYorkDate();
           portfolioIssuesMap[portfolioName].push(issueTime);
         }
       });
@@ -208,7 +208,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
         totalVisits += visitCount;
       });
       const totalPortfoliosChecked = totalVisits; // Count portfolio visits based on time gaps
-      const accuracyRate = monitoredIssues.length > 0 
+      const accuracyRate = monitoredIssues.length > 0
         ? ((monitoredIssues.length - missedIssues.length) / monitoredIssues.length * 100).toFixed(1)
         : 0;
 
@@ -258,7 +258,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
     ];
 
     const rows = filteredIssues.map(issue => [
-      new Date(issue.created_at).toLocaleString(),
+      convertToEST(issue.created_at).toLocaleString('en-US', { timeZone: 'America/New_York' }),
       issue.portfolio_name || '',
       issue.site_name || 'N/A',
       issue.issue_present || '',
@@ -277,7 +277,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `issues_by_user_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `issues_by_user_${getCurrentESTDateString()}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -288,8 +288,8 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
   const hasUserSearch = normalizedUserSearch.length > 0;
   const filteredUsers = hasUserSearch
     ? userPerformanceAnalytics.filter(user =>
-        user.userName.toLowerCase().includes(normalizedUserSearch)
-      )
+      user.userName.toLowerCase().includes(normalizedUserSearch)
+    )
     : [];
 
   const renderUserAnalyticsCards = () => {
@@ -324,15 +324,14 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
               <h4 className="text-xl font-bold text-gray-900">{user.userName}</h4>
               <div className="flex items-center gap-2 mt-1">
                 <span
-                  className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                    user.performanceScore === 'Excellent'
-                      ? 'bg-green-100 text-green-700'
-                      : user.performanceScore === 'Good'
+                  className={`text-xs font-semibold px-3 py-1 rounded-full ${user.performanceScore === 'Excellent'
+                    ? 'bg-green-100 text-green-700'
+                    : user.performanceScore === 'Good'
                       ? 'bg-blue-100 text-blue-700'
                       : user.performanceScore === 'Fair'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}
                 >
                   {user.performanceScore} Performance
                 </span>
@@ -367,7 +366,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             <div className="text-2xl font-bold text-purple-700">{user.totalPortfoliosChecked}</div>
             <div className="text-xs text-purple-600 font-medium mt-1">Portfolios Checked</div>
           </div>
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
             <div className="text-2xl font-bold text-orange-700">{user.accuracyRate}%</div>
             <div className="text-xs text-orange-600 font-medium mt-1">Accuracy Rate</div>
           </div>
@@ -385,17 +384,16 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             {user.hourlyBreakdown.map((hourData) => (
               <div key={hourData.hour} className="text-center">
                 <div
-                  className={`h-12 rounded-md transition-all cursor-pointer hover:opacity-80 ${
-                    hourData.count === 0
-                      ? 'bg-gray-100'
-                      : hourData.count >= 5
+                  className={`h-12 rounded-md transition-all cursor-pointer hover:opacity-80 ${hourData.count === 0
+                    ? 'bg-gray-100'
+                    : hourData.count >= 5
                       ? 'bg-green-500'
                       : hourData.count >= 3
-                      ? 'bg-green-400'
-                      : hourData.count >= 1
-                      ? 'bg-green-300'
-                      : 'bg-gray-100'
-                  }`}
+                        ? 'bg-green-400'
+                        : hourData.count >= 1
+                          ? 'bg-green-300'
+                          : 'bg-gray-100'
+                    }`}
                   title={`Hour ${hourData.hour}: ${hourData.count} checks${hourData.foundIssues > 0 ? `, ${hourData.foundIssues} issues found` : ''}`}
                 >
                   {hourData.count > 0 && (
@@ -459,7 +457,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             <div className="flex items-center gap-2">
               <label className="text-sm font-bold text-gray-700">Period Filter</label>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Period Type Selector */}
               <div>
@@ -574,9 +572,9 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
               <div className="mt-2 p-2 bg-blue-100 rounded text-xs text-gray-700">
                 <strong>Showing:</strong> {
                   analyticsPeriod === 'month' && selectedMonth ? `Month: ${new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` :
-                  analyticsPeriod === 'quarter' && selectedQuarter ? `Q${selectedQuarter} ${selectedYear}` :
-                  analyticsPeriod === 'custom' && customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` :
-                  'All Time'
+                    analyticsPeriod === 'quarter' && selectedQuarter ? `Q${selectedQuarter} ${selectedYear}` :
+                      analyticsPeriod === 'custom' && customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` :
+                        'All Time'
                 }
                 {selectedUserForAnalytics && ` | User: ${selectedUserForAnalytics}`}
                 {` | ${filteredIssuesForAnalytics.length} issues`}
@@ -642,7 +640,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                   const link = document.createElement('a');
                   const url = URL.createObjectURL(blob);
                   link.setAttribute('href', url);
-                  link.setAttribute('download', `user-analytics-${userSearchQuery}-${new Date().toISOString().split('T')[0]}.csv`);
+                  link.setAttribute('download', `user-analytics-${userSearchQuery}-${getCurrentESTDateString()}.csv`);
                   link.style.visibility = 'hidden';
                   document.body.appendChild(link);
                   link.click();
@@ -675,7 +673,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
 
       {/* Filter Section */}
       <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
-          <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-gray-900">Filter & Search Issues</h3>
           {(filters.showMissedOnly || filters.missedBy || filters.monitoredBy || filters.startDate || filters.endDate || filters.issueFilter === 'all' || searchQuery) && (
             <span className="text-sm text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full">
@@ -683,7 +681,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
             </span>
           )}
         </div>
-        
+
         <div className="space-y-4">
           {/* ENHANCED Global Search - More Prominent */}
           <div className="bg-gradient-to-r from-green-50 to-lime-50 p-4 rounded-lg border-2 border-green-200">
@@ -777,16 +775,16 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
           </div>
 
           {/* Date Filters with Quick Buttons */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Date Range Filter
-              </label>
-            
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Date Range Filter
+            </label>
+
             {/* Quick Date Range Buttons */}
             <div className="flex flex-wrap gap-2 mb-3">
               <button
                 onClick={() => {
-                  const today = new Date().toISOString().split('T')[0];
+                  const today = getCurrentESTDateString();
                   handleFilterChange('startDate', today);
                   handleFilterChange('endDate', today);
                 }}
@@ -843,7 +841,7 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                 This Month
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -964,11 +962,10 @@ const IssuesByUser = ({ issues, portfolios, monitoredPersonnel, onEditIssue, onD
                       {issue.portfolio_name}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                        (issue.issue_present || '').toLowerCase() === 'yes' 
-                          ? 'bg-red-100 text-red-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${(issue.issue_present || '').toLowerCase() === 'yes'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-green-100 text-green-800'
+                        }`}>
                         {(issue.issue_present || '').toLowerCase() === 'yes' ? 'Issue' : 'No Issue'}
                       </span>
                     </td>

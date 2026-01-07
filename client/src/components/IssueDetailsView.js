@@ -1,17 +1,17 @@
-/* eslint-disable */
 import React, { useMemo, useState, useEffect } from 'react';
+import { getCurrentESTHour, convertToEST, getCurrentESTDateString } from '../utils/dateUtils';
 
 // Parse flexible dates (accepts ISO and MMDDYYYY)
 const parseFlexibleDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  const direct = new Date(value);
+  const direct = convertToEST(value);
   if (!Number.isNaN(direct.getTime())) return direct;
   const str = String(value).trim();
   const mmddyyyyMatch = str.match(/^(\d{2})(\d{2})(\d{4})$/);
   if (mmddyyyyMatch) {
     const [, mm, dd, yyyy] = mmddyyyyMatch;
-    const parsed = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+    const parsed = convertToEST(`${yyyy}-${mm}-${dd}T00:00:00`);
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
   return null;
@@ -46,28 +46,8 @@ const formatDate = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-const APP_TIME_ZONE = 'America/New_York';
-
-const getAppCurrentHour = () => {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      hour12: false,
-      timeZone: APP_TIME_ZONE,
-    }).formatToParts(new Date());
-    const hourPart = parts.find((p) => p.type === 'hour');
-    if (hourPart) {
-      const h = parseInt(hourPart.value, 10);
-      if (!Number.isNaN(h)) return h;
-    }
-  } catch (e) {
-    console.warn('IssueDetailsView: fallback to local hour', e);
-  }
-  return new Date().getHours();
-};
-
 const getQuickRange = (key) => {
-  const today = new Date();
+  const today = convertToEST(new Date());
   today.setHours(0, 0, 0, 0);
 
   switch (key) {
@@ -118,7 +98,7 @@ const IssueDetailsView = ({
   const [selectedHour, setSelectedHour] = useState(
     initialHour !== null && initialHour !== undefined
       ? String(initialHour)
-      : String(getAppCurrentHour())
+      : ''
   );
   const [activeRange, setActiveRange] = useState('today');
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,7 +114,7 @@ const IssueDetailsView = ({
     if (initialHour !== null && initialHour !== undefined) {
       setSelectedHour(String(initialHour));
     } else {
-      setSelectedHour(String(new Date().getHours()));
+      setSelectedHour(String(getCurrentESTHour()));
     }
   }, [initialHour]);
 
@@ -182,7 +162,7 @@ const IssueDetailsView = ({
           issue.issues_missed_by || '',
           issue.issue_hour?.toString() || ''
         ].join(' ').toLowerCase();
-        
+
         if (!searchIn.includes(searchLower)) {
           return false;
         }
@@ -234,7 +214,7 @@ const IssueDetailsView = ({
     <div className="text-center py-10 border border-dashed border-gray-300 rounded-lg bg-gray-50">
       <div className="text-lg font-semibold text-gray-700 mb-2">No issues found</div>
       <p className="text-sm text-gray-500">
-        {issueFilter === 'yes' 
+        {issueFilter === 'yes'
           ? 'No issues with "Issue Present = Yes" found. Select "All Issues" to see all issues, or try selecting a different portfolio or adjusting the date range.'
           : 'Try selecting a different portfolio or adjusting the date range.'}
       </p>
@@ -331,11 +311,10 @@ const IssueDetailsView = ({
                   key={range.key}
                   type="button"
                   onClick={() => handleQuickRange(range.key)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    activeRange === range.key
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeRange === range.key
                       ? 'bg-green-600 text-white border-green-600'
                       : 'border-gray-300 text-gray-700 hover:border-green-500 hover:text-green-600'
-                  }`}
+                    }`}
                 >
                   {range.label}
                 </button>
@@ -417,9 +396,8 @@ const IssueDetailsView = ({
                     <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">Hour {issue.issue_hour ?? '—'}</td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
-                          issuePresent ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                        }`}
+                        className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${issuePresent ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                          }`}
                       >
                         {issuePresent ? 'Issue' : 'Clear'}
                       </span>

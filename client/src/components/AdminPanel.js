@@ -1,6 +1,6 @@
-/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
+import { convertToEST, getNewYorkDate } from '../utils/dateUtils';
 import PortfolioMonitoringMatrix from './PortfolioMonitoringMatrix';
 
 const AdminPanel = ({ onClose }) => {
@@ -42,7 +42,7 @@ const AdminPanel = ({ onClose }) => {
       onClose();
       return;
     }
-    
+
     const username = sessionStorage.getItem('adminUsername');
     if (username) {
       setAdminName(username);
@@ -61,7 +61,7 @@ const AdminPanel = ({ onClose }) => {
         .from('portfolios')
         .select('*')
         .order('name');
-      
+
       if (portfoliosError) throw portfoliosError;
       setPortfolios(portfoliosData || []);
 
@@ -76,7 +76,7 @@ const AdminPanel = ({ onClose }) => {
           )
         `)
         .order('created_at', { ascending: false });
-      
+
       if (issuesError) {
         console.error('Error fetching issues:', issuesError);
       } else {
@@ -93,7 +93,7 @@ const AdminPanel = ({ onClose }) => {
         .from('users')
         .select('*')
         .order('username');
-      
+
       if (loginUsersError) {
         console.error('Error fetching login users:', loginUsersError);
       } else {
@@ -106,7 +106,7 @@ const AdminPanel = ({ onClose }) => {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-      
+
       if (logsError) {
         console.error('Error fetching admin logs:', logsError);
         // Don't throw error if table doesn't exist yet
@@ -124,16 +124,16 @@ const AdminPanel = ({ onClose }) => {
             name
           )
         `);
-      
+
       // Only filter by expiration if not showing expired locks
       if (!showExpiredLocks) {
-        locksQuery = locksQuery.gt('expires_at', new Date().toISOString());
+        locksQuery = locksQuery.gt('expires_at', getNewYorkDate().toISOString());
       }
-      
+
       const { data: locksData, error: locksError } = await locksQuery
         .order('reserved_at', { ascending: false })
         .limit(100); // Limit to 100 most recent
-      
+
       if (locksError) {
         console.error('Error fetching active locks:', locksError);
       } else {
@@ -174,7 +174,7 @@ const AdminPanel = ({ onClose }) => {
           setUsers(parsed.map((name, index) => ({ id: `local-${index}`, name, role: 'monitor' })));
         } else {
           const defaultUsers = [
-            'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L', 
+            'Anjana', 'Anita P', 'Arun V', 'Bharat Gu', 'Deepa L',
             'jenny', 'Kumar S', 'Lakshmi B', 'Manoj D', 'Rajesh K',
             'Ravi T', 'Vikram N'
           ];
@@ -237,7 +237,7 @@ const AdminPanel = ({ onClose }) => {
 
       // Refresh locks list immediately
       await fetchData();
-      
+
       // Dispatch a custom event to notify other components (like SinglePageComplete) to refresh
       window.dispatchEvent(new CustomEvent('portfolioUnlocked', {
         detail: { portfolioId, portfolioName }
@@ -262,7 +262,7 @@ const AdminPanel = ({ onClose }) => {
     const duplicatePortfolio = portfolios.find(
       p => p.name.toLowerCase() === newPortfolioName.trim().toLowerCase()
     );
-    
+
     if (duplicatePortfolio) {
       alert('❌ Portfolio name already exists! Please choose a different name.');
       return;
@@ -277,7 +277,7 @@ const AdminPanel = ({ onClose }) => {
       if (newPortfolioSiteRange.trim()) {
         insertData.site_range = newPortfolioSiteRange.trim();
       }
-      
+
       const { data, error } = await supabase
         .from('portfolios')
         .insert([insertData])
@@ -292,9 +292,9 @@ const AdminPanel = ({ onClose }) => {
             .from('portfolios')
             .insert([insertDataWithoutSubtitle])
             .select();
-          
+
           if (retryError) throw retryError;
-          
+
           alert('⚠️ Portfolio added, but subtitle was not saved because the "subtitle" column is missing.\n\nPlease run this SQL in Supabase SQL Editor:\n\nALTER TABLE portfolios ADD COLUMN IF NOT EXISTS subtitle VARCHAR(100);');
           await addAdminLog('portfolio_added', `Added portfolio: ${newPortfolioName.trim()}`, retryData[0].portfolio_id);
           setNewPortfolioName('');
@@ -522,7 +522,7 @@ const AdminPanel = ({ onClose }) => {
     const duplicateUser = loginUsers.find(
       u => u.username.toLowerCase() === newLoginUsername.trim().toLowerCase()
     );
-    
+
     if (duplicateUser) {
       alert('❌ Username already exists! Please choose a different username.');
       return;
@@ -728,61 +728,55 @@ const AdminPanel = ({ onClose }) => {
           <div className="flex gap-4 px-6">
             <button
               onClick={() => setActiveTab('portfolios')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'portfolios'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'portfolios'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
             >
               Portfolios ({portfolios.length})
             </button>
             <button
               onClick={() => setActiveTab('loginUsers')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'loginUsers'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'loginUsers'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
             >
               Login Users ({loginUsers.length})
             </button>
             <button
               onClick={() => setActiveTab('users')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'users'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'users'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
             >
               Monitored By / Missed By Users ({users.length})
             </button>
             <button
               onClick={() => setActiveTab('locks')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'locks'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'locks'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
             >
               Active Locks ({activeLocks.length})
             </button>
             <button
               onClick={() => setActiveTab('logs')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'logs'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'logs'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
             >
               Admin Logs ({adminLogs.length})
             </button>
             <button
               onClick={() => setActiveTab('coverageMatrix')}
-              className={`py-3 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'coverageMatrix'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
+              className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'coverageMatrix'
+                ? 'border-green-500 text-green-600'
+                : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
             >
               Coverage Matrix
             </button>
@@ -1040,24 +1034,22 @@ const AdminPanel = ({ onClose }) => {
                         <div className="flex-1">
                           <div className="flex items-center gap-3">
                             <div className="font-medium text-gray-900">{user.username}</div>
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                              user.role === 'admin'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-blue-100 text-blue-800'
-                            }`}>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${user.role === 'admin'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-blue-100 text-blue-800'
+                              }`}>
                               {user.role.toUpperCase()}
                             </span>
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                              user.is_active
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${user.is_active
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                              }`}>
                               {user.is_active ? 'Active' : 'Inactive'}
                             </span>
                           </div>
                           <div className="text-sm text-gray-600 mt-1">{user.full_name || 'No name provided'}</div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Last login: {user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}
+                            Last login: {user.last_login ? convertToEST(user.last_login).toLocaleString('en-US', { timeZone: 'America/New_York' }) : 'Never'}
                           </div>
                           {(user.username || user.password_hash) && (
                             <div className="mt-2">
@@ -1083,11 +1075,10 @@ const AdminPanel = ({ onClose }) => {
                           </button>
                           <button
                             onClick={() => handleToggleUserStatus(user.user_id, user.is_active)}
-                            className={`px-4 py-2 rounded font-medium text-sm ${
-                              user.is_active
-                                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                                : 'bg-green-100 text-green-700 hover:bg-green-200'
-                            }`}
+                            className={`px-4 py-2 rounded font-medium text-sm ${user.is_active
+                              ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                              }`}
                           >
                             {user.is_active ? 'Deactivate' : 'Activate'}
                           </button>
@@ -1174,7 +1165,7 @@ const AdminPanel = ({ onClose }) => {
                       🔒 {showExpiredLocks ? 'All Portfolio Locks' : 'Active Portfolio Locks'}
                     </h3>
                     <p className="text-sm text-gray-600">
-                      {showExpiredLocks 
+                      {showExpiredLocks
                         ? 'View all portfolio locks (including expired). You can unlock any portfolio if needed.'
                         : 'View and manage all active portfolio locks. You can unlock any portfolio if needed.'}
                     </p>
@@ -1240,7 +1231,8 @@ const AdminPanel = ({ onClose }) => {
                             Hour {lock.issue_hour}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500">
-                            {new Date(lock.reserved_at).toLocaleString('en-US', {
+                            {convertToEST(lock.reserved_at).toLocaleString('en-US', {
+                              timeZone: 'America/New_York',
                               month: 'short',
                               day: 'numeric',
                               hour: '2-digit',
@@ -1248,20 +1240,21 @@ const AdminPanel = ({ onClose }) => {
                             })}
                           </td>
                           <td className="px-4 py-3 text-sm">
-                            <div className={`${new Date(lock.expires_at) < new Date() ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                              {new Date(lock.expires_at).toLocaleString('en-US', {
+                            <div className={`${convertToEST(lock.expires_at) < convertToEST(new Date()) ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                              {convertToEST(lock.expires_at).toLocaleString('en-US', {
+                                timeZone: 'America/New_York',
                                 month: 'short',
                                 day: 'numeric',
                                 hour: '2-digit',
                                 minute: '2-digit'
                               })}
-                              {new Date(lock.expires_at) < new Date() && (
+                              {convertToEST(lock.expires_at) < convertToEST(new Date()) && (
                                 <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded">Expired</span>
                               )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-sm">
-                            {new Date(lock.expires_at) >= new Date() ? (
+                            {convertToEST(lock.expires_at) >= convertToEST(new Date()) ? (
                               <button
                                 onClick={() => handleUnlockPortfolio(lock.id, lock.portfolio_name, lock.monitored_by, lock.portfolio_id)}
                                 className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition-colors"
@@ -1335,15 +1328,14 @@ const AdminPanel = ({ onClose }) => {
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                                log.action_type === 'portfolio_added' || log.action_type === 'user_added'
-                                  ? 'bg-green-100 text-green-800'
-                                  : log.action_type === 'portfolio_deleted' || log.action_type === 'user_deleted'
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${log.action_type === 'portfolio_added' || log.action_type === 'user_added'
+                                ? 'bg-green-100 text-green-800'
+                                : log.action_type === 'portfolio_deleted' || log.action_type === 'user_deleted'
                                   ? 'bg-red-100 text-red-800'
                                   : log.action_type === 'system_alert'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}>
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
                                 {log.action_type.replace(/_/g, ' ').toUpperCase()}
                               </span>
                               <span className="text-sm font-medium text-gray-900">{log.admin_name}</span>
@@ -1351,7 +1343,8 @@ const AdminPanel = ({ onClose }) => {
                             <p className="text-sm text-gray-700">{log.action_description}</p>
                           </div>
                           <div className="text-xs text-gray-500 ml-4 text-right">
-                            {new Date(log.created_at).toLocaleString('en-US', {
+                            {convertToEST(log.created_at).toLocaleString('en-US', {
+                              timeZone: 'America/New_York',
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric',
@@ -1376,100 +1369,100 @@ const AdminPanel = ({ onClose }) => {
             />
           )}
 
-        {/* Edit Login User Modal */}
-        {editingLoginUser && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-gray-900">Edit Login User</h3>
-                <button
-                  onClick={() => {
-                    setEditingLoginUser(null);
-                    setEditLoginPassword('');
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
-                  <input
-                    type="text"
-                    value={editLoginUsername}
-                    onChange={(e) => setEditLoginUsername(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
+          {/* Edit Login User Modal */}
+          {editingLoginUser && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold text-gray-900">Edit Login User</h3>
+                  <button
+                    onClick={() => {
+                      setEditingLoginUser(null);
+                      setEditLoginPassword('');
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    value={editLoginFullName}
-                    onChange={(e) => setEditLoginFullName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                    <select
-                      value={editLoginRole}
-                      onChange={(e) => setEditLoginRole(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2 mt-6 md:mt-0">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
                     <input
-                      type="checkbox"
-                      checked={editLoginActive}
-                      onChange={(e) => setEditLoginActive(e.target.checked)}
-                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                      type="text"
+                      value={editLoginUsername}
+                      onChange={(e) => setEditLoginUsername(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
                     />
-                    <span className="text-sm text-gray-700">Active</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      value={editLoginFullName}
+                      onChange={(e) => setEditLoginFullName(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                      <select
+                        value={editLoginRole}
+                        onChange={(e) => setEditLoginRole(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2 mt-6 md:mt-0">
+                      <input
+                        type="checkbox"
+                        checked={editLoginActive}
+                        onChange={(e) => setEditLoginActive(e.target.checked)}
+                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                      />
+                      <span className="text-sm text-gray-700">Active</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">New Password (optional)</label>
+                    <input
+                      type="text"
+                      value={editLoginPassword}
+                      onChange={(e) => setEditLoginPassword(e.target.value)}
+                      placeholder="Leave blank to keep existing"
+                      className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Minimum 6 characters. Leave empty to keep current password.</p>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password (optional)</label>
-                  <input
-                    type="text"
-                    value={editLoginPassword}
-                    onChange={(e) => setEditLoginPassword(e.target.value)}
-                    placeholder="Leave blank to keep existing"
-                    className="w-full px-4 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Minimum 6 characters. Leave empty to keep current password.</p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setEditingLoginUser(null);
+                      setEditLoginPassword('');
+                    }}
+                    className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUpdateLoginUser}
+                    className="px-5 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
+                  >
+                    Save Changes
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setEditingLoginUser(null);
-                    setEditLoginPassword('');
-                  }}
-                  className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateLoginUser}
-                  className="px-5 py-2 bg-green-600 text-white rounded font-medium hover:bg-green-700"
-                >
-                  Save Changes
-                </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
 
         {/* Footer */}

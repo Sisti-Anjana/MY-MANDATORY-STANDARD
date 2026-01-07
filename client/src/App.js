@@ -1,4 +1,3 @@
-/* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import SinglePageComplete from './components/SinglePageComplete';
 import UserLogin from './components/UserLogin';
