@@ -8,6 +8,7 @@ const PortfolioHourSessionDrawer = ({
   hour,
   portfolios,
   issues,
+  activeReservations = [],
   monitoredPersonnel,
   onClose,
   onRefresh,
@@ -48,10 +49,9 @@ const PortfolioHourSessionDrawer = ({
       if (!portfolioId) return;
 
       const sessionId = localStorage.getItem('session_id') || `session-${Date.now()}`;
-      const nowIso = new Date().toISOString();
       const currentUser = String(loggedInUser || '').trim();
 
-      // OPTIMIZATION: Only auto-lock if selection actually CHANGED or if forced
+      // OPTIMIZATION: Only auto-lock if selection actually CHANGED
       const currentValues = { portfolioId, hour };
       const hasChanged =
         currentValues.portfolioId !== lastAutoLockedValues.current.portfolioId ||
@@ -62,86 +62,77 @@ const PortfolioHourSessionDrawer = ({
         return;
       }
 
-      // If selection hasn't changed and we DON'T have a lock, it means we recently UNLOCKED 
-      // or someone else has it. Don't grab it back automatically on every re-render/poll.
+      // CRITICAL FIX: If selection hasn't changed and we DON'T have a lock, it means we recently UNLOCKED 
+      // or someone else has it. Don't grab it back automatically. This prevents re-locking loops.
       if (!hasChanged && !isLockedByMe) {
-        console.log('ℹ️ Selection unchanged and no lock. Skipping auto-lock to prevent loop.');
+        console.log('ℹ️ Drawer selection unchanged and no lock. Skipping auto-lock.');
         return;
       }
 
-      // Note: We no longer skip auto-lock if complete, allowing users to re-lock for further work.
+      try {
+        setError(null);
 
-      // 1. Check for ANY active reservation for this portfolio/hour
-      const { data: activeReservations, error: reservationCheckError } = await supabase
-        .from('hour_reservations')
-        .select('*')
-        .eq('portfolio_id', portfolioId)
-        .eq('issue_hour', hour)
-        .gt('expires_at', nowIso);
+        // 1. Check global reservations for this portfolio/hour
+        const existingLock = activeReservations.find(r =>
+          (r.portfolio_id || r.id) === portfolioId && r.issue_hour === hour
+        );
 
-      if (reservationCheckError) {
-        console.error('Error checking reservation:', reservationCheckError);
-        return;
-      }
+        if (existingLock) {
+          const rSessionId = String(existingLock.session_id || '').trim();
+          const rMonitoredBy = String(existingLock.monitored_by || '').trim();
+          const isMine = rSessionId === String(sessionId || '').trim() && rMonitoredBy === currentUser;
 
-      // 2. Analyze existing locks
-      if (activeReservations && activeReservations.length > 0) {
-        // Filter to see if it's MY lock (matches session AND user)
-        const myActiveReservations = activeReservations.filter(r => {
-          const rSessionId = String(r.session_id || '').trim();
-          const rMonitoredBy = String(r.monitored_by || '').trim();
-          return rSessionId === String(sessionId || '').trim() &&
-            rMonitoredBy === currentUser;
-        });
+          if (isMine) {
+            setIsLockedByMe(true);
+            lastAutoLockedValues.current = currentValues;
+            return;
+          } else {
+            // Locked by someone else - BLOCK IT
+            setError(`❌ ERROR: Locked by "${rMonitoredBy}". Please close this drawer.`);
+            setIsLockedByMe(false);
+            return;
+          }
+        }
 
-        if (myActiveReservations.length > 0) {
-          // Already locked by me - confirm it
-          setIsLockedByMe(true);
-          return;
-        } else {
-          // Locked by someone else - BLOCK IT
-          const otherLock = activeReservations[0];
-          const lockedBy = String(otherLock.monitored_by || 'another user').trim();
-          const errorMsg = `❌ ERROR: This portfolio "${portfolioName}" (Hour ${hour}) is locked by "${lockedBy}". Only the person who locked it can open the session sheet.`;
-          setError(errorMsg);
-          // Alert removed to be less intrusive, banner will show error
-          setTimeout(() => {
-            closeDrawer();
-          }, 3000); // Give them 3 seconds to read the error
+        // 2. Check if I have an active lock on ANOTHER portfolio/hour
+        const myOtherLock = activeReservations.find(r =>
+          r.session_id === String(sessionId || '').trim() &&
+          r.monitored_by === currentUser &&
+          ((r.portfolio_id || r.id) !== portfolioId || r.issue_hour !== hour)
+        );
+
+        if (myOtherLock) {
+          const otherPortfolio = portfolios.find(p => (p.portfolio_id || p.id) === myOtherLock.portfolio_id);
+          setError(`❌ ERROR: You already have a lock on "${otherPortfolio?.name || 'another portfolio'}" (Hour ${myOtherLock.issue_hour}). Please complete that first.`);
+          setIsLockedByMe(false);
           return;
         }
-      }
 
-      // 3. No active lock found - AUTO-LOCK for current user
-      // Note: We allow locking even if portfolio was previously completed
-      // Users can re-open by changing "All Sites Checked" to "No"
-      console.log('🔓 Portfolio is free. Auto-locking for:', currentUser);
+        // 3. No active lock found - Attempt to AUTO-LOCK
+        console.log('🔒 Portfolio is free. Auto-locking for drawer:', currentUser);
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour lock
+        const { error: insertError } = await supabase
+          .from('hour_reservations')
+          .insert([{
+            portfolio_id: portfolioId,
+            issue_hour: hour,
+            monitored_by: currentUser,
+            session_id: sessionId,
+            expires_at: expiresAt
+          }]);
 
-      const { error: insertError } = await supabase
-        .from('hour_reservations')
-        .insert([{
-          portfolio_id: portfolioId,
-          issue_hour: hour,
-          monitored_by: currentUser,
-          session_id: sessionId,
-          expires_at: expiresAt
-        }]);
-
-      if (insertError) {
-        console.error('Error creating auto-lock:', insertError);
-        // Continue anyway, but warn
-      } else {
-        console.log('🔒 Auto-lock successful');
-        setIsLockedByMe(true);
-        // Update last auto-locked values to prevent immediate re-locking on same selection
-        lastAutoLockedValues.current = {
-          portfolioId: portfolioId,
-          hour: hour
-        };
-        // Refresh parent to update main table UI
-        if (onRefresh) onRefresh();
+        if (insertError) {
+          console.error('Error creating auto-lock:', insertError);
+          setError('Failed to acquire lock. Someone might have just taken it.');
+        } else {
+          console.log('✅ Auto-lock successful for drawer');
+          setIsLockedByMe(true);
+          lastAutoLockedValues.current = currentValues;
+          if (onRefresh) onRefresh();
+        }
+      } catch (err) {
+        console.error('Drawer manageLock error:', err);
       }
     };
 
@@ -537,13 +528,18 @@ const PortfolioHourSessionDrawer = ({
                               expires_at: expiresAt
                             }]);
 
-                          if (!lockError) setIsLockedByMe(true);
+                          if (lockError) {
+                            console.error('Error re-locking on "No":', lockError);
+                          } else {
+                            setIsLockedByMe(true);
+                            lastAutoLockedValues.current = { portfolioId, hour };
+                          }
                         }
 
                         if (onRefresh) onRefresh();
                       } catch (err) {
-                        console.error('Error marking as incomplete:', err);
-                        setError('Failed to update status.');
+                        console.error('Error undoing completion:', err);
+                        setError('Failed to undo completion.');
                       } finally {
                         setUpdatingSitesChecked(false);
                       }

@@ -2197,6 +2197,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
                 sites={sites}
                 monitoredPersonnel={monitoredPersonnel}
                 currentHour={currentHour}
+                activeReservations={activeReservations}
                 onRefresh={async () => {
                   // CRITICAL FIX: Use fetchData(true) to prevent unmounting and form data loss
                   await fetchData(true);
@@ -2533,6 +2534,7 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
           hour={sessionHour}
           portfolios={portfolios}
           issues={issues}
+          activeReservations={activeReservations}
           monitoredPersonnel={monitoredPersonnel}
           onClose={async () => {
             setSessionPortfolioName(null);
