@@ -38,9 +38,41 @@ const PortfolioHourSessionDrawer = ({
   const [isLockedByMe, setIsLockedByMe] = useState(false);
   const lastAutoLockedValues = useRef({ portfolioId: '', hour: '' });
 
+  // 1. SYNC LOCK STATE WITH GLOBAL PROP
+  useEffect(() => {
+    if (!isOpen || !portfolioId || hour === null) {
+      setIsLockedByMe(false);
+      return;
+    }
+
+    const sessionId = localStorage.getItem('session_id') || `session-${Date.now()}`;
+    const currentUser = String(loggedInUser || '').trim();
+
+    const myGlobalRes = activeReservations.find(r =>
+      (r.portfolio_id || r.id) === portfolioId &&
+      r.issue_hour === hour &&
+      r.session_id === sessionId &&
+      r.monitored_by === currentUser
+    );
+
+    if (myGlobalRes) {
+      if (!isLockedByMe) {
+        console.log('🔄 Syncing Drawer lock from global state');
+        setIsLockedByMe(true);
+        // Update ref to show we have THIS lock, prevents immediate auto-lock attempt
+        lastAutoLockedValues.current = { portfolioId, hour };
+      }
+    } else {
+      if (isLockedByMe) {
+        console.log('🔄 Clearing Drawer lock - no longer exists in global state');
+        setIsLockedByMe(false);
+      }
+    }
+  }, [activeReservations, isOpen, portfolioId, hour, loggedInUser, isLockedByMe]);
+
+  // 2. AUTO-LOCK AND DATA LOADING
   useEffect(() => {
     if (!isOpen) {
-      setIsLockedByMe(false);
       return;
     }
 
@@ -58,15 +90,24 @@ const PortfolioHourSessionDrawer = ({
         currentValues.hour !== lastAutoLockedValues.current.hour;
 
       if (!hasChanged && isLockedByMe) {
-        // Selection hasn't changed and we already have a lock - nothing to do
+        // Already have a lock and nothing changed
         return;
       }
 
-      // CRITICAL FIX: If selection hasn't changed and we DON'T have a lock, it means we recently UNLOCKED 
-      // or someone else has it. Don't grab it back automatically. This prevents re-locking loops.
+      // CRITICAL: If selection hasn't changed and we DON'T have a lock, it means we recently UNLOCKED 
+      // or someone else has it. Don't grab it back automatically. 
+      // But if we just got it via SYNC (above), we should let it pass.
       if (!hasChanged && !isLockedByMe) {
-        console.log('ℹ️ Drawer selection unchanged and no lock. Skipping auto-lock.');
-        return;
+        // Special case: if activeReservations says we have it, we shouldn't be here (sync would set isLockedByMe)
+        // If we are here, it's either free or someone else has it.
+        const someoneElseHasIt = activeReservations.some(r =>
+          (r.portfolio_id || r.id) === portfolioId && r.issue_hour === hour
+        );
+
+        if (!someoneElseHasIt) {
+          console.log('ℹ️ Drawer selection unchanged and no lock. Skipping auto-lock to prevent loop.');
+          return;
+        }
       }
 
       try {
