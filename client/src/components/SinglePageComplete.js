@@ -126,6 +126,16 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         query = query.eq('session_id', sessionId);
       }
 
+      // 1. If we have a numerical ID, use it
+      if (typeof portfolioId === 'number' || !isNaN(portfolioId)) {
+        query = query.eq('portfolio_id', portfolioId);
+      } else {
+        // 2. Otherwise assume it's a name or slug and try to match on name
+        // (This happens if we use names for routing/state)
+        console.log('ℹ️ Releasing by name fallback for:', portfolioId);
+        query = query.filter('portfolio_name', 'eq', portfolioId);
+      }
+
       // If hour is specified, only release that hour's reservation
       if (hour !== null) {
         query = query.eq('issue_hour', hour);
@@ -941,9 +951,11 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         .trim()
         .toLowerCase() === currentUserName.toLowerCase()
     );
-  // Allow unlock ONLY if the current user owns the lock
+  // Allow unlock if:
+  // 1. Current user owns the lock
+  // 2. User is an admin
   const canUnlockSelectedPortfolio =
-    !!selectedPortfolioReservation && isPortfolioLockedByCurrentUser;
+    !!selectedPortfolioReservation && (isPortfolioLockedByCurrentUser || isAdmin);
 
   // Load sites checked text when modal opens or portfolio changes
   useEffect(() => {
@@ -1667,8 +1679,13 @@ const SinglePageComplete = ({ isAdmin = false, onLogout }) => {
         await updatePortfolioSitesChecked(selectedPortfolioForAction, false);
       }
 
-      // Release lock for this portfolio/hour ONLY for the current user's session
-      await releaseReservationForPortfolio(portfolioId, currentHour, false);
+      // CRITICAL FIX: Use the actual hour from the reservation, not the system hour
+      // This ensures we can unlock reservations from previous hours
+      const reservationHour = selectedPortfolioReservation?.issue_hour;
+
+      // Release lock for this portfolio/hour
+      // If an admin is unlocking someone else, we use releaseAllUsers=true to force it
+      await releaseReservationForPortfolio(portfolioId, reservationHour, true);
 
       // Refresh reservations and data to update UI
       await fetchActiveReservations();

@@ -253,16 +253,35 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         return;
       }
 
+      // CRITICAL: Skip auto-locking if the portfolio is already marked "Yes" (Complete)
+      // This prevents the automatic re-locking loop that resets status back to "No"
+      const currentPortfolio = portfolios.find(p => (p.portfolio_id || p.id) === selectedPortfolioId);
+      const isCompletedThisHour =
+        currentPortfolio?.all_sites_checked &&
+        parseInt(currentPortfolio?.all_sites_checked_hour) === parsedHour;
+
+      if (isCompletedThisHour && !myReservation) {
+        console.log(`ℹ️ Portfolio "${currentPortfolio.name}" is already complete for hour ${parsedHour}. Skipping auto-lock.`);
+        return;
+      }
+
       try {
         setReservationError(null);
 
         // Check if I already have a lock for this specific selection in the global list first
         // This avoids unnecessary DB queries if we already have the info
-        const existingMine = activeReservations.find(r =>
-          (r.portfolio_id || r.id) === selectedPortfolioId &&
-          r.issue_hour === parsedHour &&
-          r.session_id === sessionId
-        );
+        const existingMine = activeReservations.find(r => {
+          const resName = (r.portfolio_name || r.portfolios?.name || '').trim().toLowerCase();
+          const matchName = String(currentPortfolio?.name || '').trim().toLowerCase();
+          const resId = String(r.portfolio_id || r.id || '').trim().toLowerCase();
+          const matchId = String(selectedPortfolioId || '').trim().toLowerCase();
+
+          return (
+            (resName === matchName || (resId && resId === matchId)) &&
+            r.issue_hour === parsedHour &&
+            r.session_id === sessionId
+          );
+        });
 
         if (existingMine) {
           console.log('✅ Already have lock in global state. Syncing.');
@@ -272,35 +291,47 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
         }
 
         // Check if I have an active lock on ANOTHER portfolio/hour - if so, block new lock
-        const myOtherLock = activeReservations.find(r =>
-          r.session_id === sessionId &&
-          r.monitored_by === loggedInUser &&
-          ((r.portfolio_id || r.id) !== selectedPortfolioId || r.issue_hour !== parsedHour)
-        );
+        const myOtherLock = activeReservations.find(r => {
+          const resName = (r.portfolio_name || r.portfolios?.name || '').trim().toLowerCase();
+          const matchName = String(currentPortfolio?.name || '').trim().toLowerCase();
+          const resId = String(r.portfolio_id || r.id || '').trim().toLowerCase();
+          const matchId = String(selectedPortfolioId || '').trim().toLowerCase();
+
+          return (
+            r.session_id === sessionId &&
+            r.monitored_by === loggedInUser &&
+            !((resName === matchName || (resId && resId === matchId)) && r.issue_hour === parsedHour)
+          );
+        });
 
         if (myOtherLock) {
-          const lockedPortfolio = portfolios.find(p => (p.portfolio_id || p.id) === myOtherLock.portfolio_id);
+          const lockedPortfolio = portfolios.find(p => (p.portfolio_id || p.id || p.portfolio_name) === (myOtherLock.portfolio_id || myOtherLock.portfolio_name));
           const isCompleted = lockedPortfolio?.all_sites_checked === true;
 
           if (!isCompleted) {
             setReservationError(`You already have a lock on "${lockedPortfolio?.name || 'another portfolio'}" (Hour ${myOtherLock.issue_hour}). Please complete that first.`);
             // Reset portfolio selection to the locked one to prevent invalid state
-            setFormData(prev => ({ ...prev, portfolio_id: myOtherLock.portfolio_id }));
+            setFormData(prev => ({ ...prev, portfolio_id: myOtherLock.portfolio_id || myOtherLock.portfolio_name }));
             return;
           } else {
             // Portfolio is completed - we should release it before allowing a new one
-            // We'll let the DB handle the new insert which might fail if there's a constraint,
-            // but for UX, we should try to release.
             console.log('ℹ️ User has lock on completed portfolio. Transitioning.');
           }
         }
 
         // Check for conflicts (someone else has it)
-        const conflict = activeReservations.find(r =>
-          (r.portfolio_id || r.id) === selectedPortfolioId &&
-          r.issue_hour === parsedHour &&
-          r.session_id !== sessionId
-        );
+        const conflict = activeReservations.find(r => {
+          const resName = (r.portfolio_name || r.portfolios?.name || '').trim().toLowerCase();
+          const matchName = String(currentPortfolio?.name || '').trim().toLowerCase();
+          const resId = String(r.portfolio_id || r.id || '').trim().toLowerCase();
+          const matchId = String(selectedPortfolioId || '').trim().toLowerCase();
+
+          return (
+            (resName === matchName || (resId && resId === matchId)) &&
+            r.issue_hour === parsedHour &&
+            r.session_id !== sessionId
+          );
+        });
 
         if (conflict) {
           if (!isAdmin) {
@@ -328,6 +359,24 @@ const TicketLoggingTable = ({ issues, portfolios, sites, monitoredPersonnel, cur
           .select();
 
         if (insertError) throw insertError;
+
+        // CRITICAL FIX: Ensure portfolio status is reset to "No" (checked = false) when locked
+        // This ensures a clean state for the new hour/user session
+        try {
+          await supabase
+            .from('portfolios')
+            .update({
+              all_sites_checked: false,
+              all_sites_checked_hour: null,
+              all_sites_checked_date: null,
+              all_sites_checked_by: null
+            })
+            .eq('portfolio_id', selectedPortfolioId);
+          console.log('✅ Portfolio status reset to "No" upon lock acquisition');
+        } catch (updateStatusError) {
+          console.error('Error resetting portfolio status on lock:', updateStatusError);
+          // Don't throw here, the lock is already acquired and that's the primary goal
+        }
 
         const insertedReservation = insertedRows[0];
         setMyReservation(insertedReservation);

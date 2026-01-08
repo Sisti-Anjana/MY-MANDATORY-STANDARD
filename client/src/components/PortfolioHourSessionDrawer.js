@@ -48,9 +48,20 @@ const PortfolioHourSessionDrawer = ({
     const sessionId = localStorage.getItem('session_id') || `session-${Date.now()}`;
     const currentUser = String(loggedInUser || '').trim();
 
+    // Helper to match reservations across different structures (id vs name)
+    const matchReservation = (r, pId, pName, h) => {
+      if (!r) return false;
+      const rName = (r.portfolio_name || r.portfolios?.name || '').trim().toLowerCase();
+      const matchName = String(pName || '').trim().toLowerCase();
+      const rId = String(r.portfolio_id || r.id || '').trim().toLowerCase();
+      const matchId = String(pId || '').trim().toLowerCase();
+      const hourMatch = h === null || r.issue_hour === h;
+
+      return (rName === matchName || (rId && rId === matchId)) && hourMatch;
+    };
+
     const myGlobalRes = activeReservations.find(r =>
-      (r.portfolio_id || r.id) === portfolioId &&
-      r.issue_hour === hour &&
+      matchReservation(r, portfolioId, portfolioName, hour) &&
       r.session_id === sessionId &&
       r.monitored_by === currentUser
     );
@@ -68,13 +79,24 @@ const PortfolioHourSessionDrawer = ({
         setIsLockedByMe(false);
       }
     }
-  }, [activeReservations, isOpen, portfolioId, hour, loggedInUser, isLockedByMe]);
+  }, [activeReservations, isOpen, portfolioId, hour, loggedInUser, isLockedByMe, portfolioName]);
 
   // 2. AUTO-LOCK AND DATA LOADING
   useEffect(() => {
     if (!isOpen) {
       return;
     }
+
+    // Helper to match reservations (reuse logic)
+    const matchReservation = (r, pId, pName, h) => {
+      if (!r) return false;
+      const rName = (r.portfolio_name || r.portfolios?.name || '').trim().toLowerCase();
+      const matchName = String(pName || '').trim().toLowerCase();
+      const rId = String(r.portfolio_id || r.id || '').trim().toLowerCase();
+      const matchId = String(pId || '').trim().toLowerCase();
+      const hourMatch = h === null || r.issue_hour === h;
+      return (rName === matchName || (rId && rId === matchId)) && hourMatch;
+    };
 
     // CRITICAL VALIDATION: Check lock status and AUTO-LOCK if free
     const manageLock = async () => {
@@ -94,15 +116,24 @@ const PortfolioHourSessionDrawer = ({
         return;
       }
 
+      // CRITICAL: Skip auto-locking if the portfolio is already marked "Yes" (Complete) for THIS hour
+      // This allows a finished portfolio to stay green and unlocked.
+      const isCompletedThisHour =
+        portfolioRecord?.all_sites_checked &&
+        parseInt(portfolioRecord?.all_sites_checked_hour) === hour;
+
+      if (isCompletedThisHour && !isLockedByMe) {
+        console.log(`ℹ️ Portfolio "${portfolioName}" is already complete for hour ${hour}. Skipping auto-lock in drawer.`);
+        return;
+      }
+
       // CRITICAL: If selection hasn't changed and we DON'T have a lock, it means we recently UNLOCKED 
       // or someone else has it. Don't grab it back automatically. 
       // But if we just got it via SYNC (above), we should let it pass.
       if (!hasChanged && !isLockedByMe) {
         // Special case: if activeReservations says we have it, we shouldn't be here (sync would set isLockedByMe)
         // If we are here, it's either free or someone else has it.
-        const someoneElseHasIt = activeReservations.some(r =>
-          (r.portfolio_id || r.id) === portfolioId && r.issue_hour === hour
-        );
+        const someoneElseHasIt = activeReservations.some(r => matchReservation(r, portfolioId, portfolioName, hour));
 
         if (!someoneElseHasIt) {
           console.log('ℹ️ Drawer selection unchanged and no lock. Skipping auto-lock to prevent loop.');
@@ -114,9 +145,7 @@ const PortfolioHourSessionDrawer = ({
         setError(null);
 
         // 1. Check global reservations for this portfolio/hour
-        const existingLock = activeReservations.find(r =>
-          (r.portfolio_id || r.id) === portfolioId && r.issue_hour === hour
-        );
+        const existingLock = activeReservations.find(r => matchReservation(r, portfolioId, portfolioName, hour));
 
         if (existingLock) {
           const rSessionId = String(existingLock.session_id || '').trim();
@@ -139,11 +168,11 @@ const PortfolioHourSessionDrawer = ({
         const myOtherLock = activeReservations.find(r =>
           r.session_id === String(sessionId || '').trim() &&
           r.monitored_by === currentUser &&
-          ((r.portfolio_id || r.id) !== portfolioId || r.issue_hour !== hour)
+          !matchReservation(r, portfolioId, portfolioName, hour)
         );
 
         if (myOtherLock) {
-          const otherPortfolio = portfolios.find(p => (p.portfolio_id || p.id) === myOtherLock.portfolio_id);
+          const otherPortfolio = portfolios.find(p => matchReservation(myOtherLock, p.portfolio_id || p.id, p.name, null));
           setError(`❌ ERROR: You already have a lock on "${otherPortfolio?.name || 'another portfolio'}" (Hour ${myOtherLock.issue_hour}). Please complete that first.`);
           setIsLockedByMe(false);
           return;
@@ -168,6 +197,23 @@ const PortfolioHourSessionDrawer = ({
           setError('Failed to acquire lock. Someone might have just taken it.');
         } else {
           console.log('✅ Auto-lock successful for drawer');
+
+          // CRITICAL FIX: Ensure portfolio status is reset to "No" (checked = false) when locked
+          try {
+            await supabase
+              .from('portfolios')
+              .update({
+                all_sites_checked: false,
+                all_sites_checked_hour: null,
+                all_sites_checked_date: null,
+                all_sites_checked_by: null
+              })
+              .eq('portfolio_id', portfolioId);
+            console.log('✅ Portfolio status reset to "No" upon drawer auto-lock');
+          } catch (updateStatusError) {
+            console.error('Error resetting portfolio status on drawer lock:', updateStatusError);
+          }
+
           setIsLockedByMe(true);
           lastAutoLockedValues.current = currentValues;
           if (onRefresh) onRefresh();
@@ -209,6 +255,44 @@ const PortfolioHourSessionDrawer = ({
     const { name, value } = e.target;
     setNewRow((prev) => ({ ...prev, [name]: value }));
   };
+
+  // Draft persistence logic
+  const draftKey = `draft_issue_${portfolioId}_${hour}`;
+
+  // Restore draft on mount or when portfolio/hour changes
+  useEffect(() => {
+    if (isOpen && portfolioId && hour) {
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          // Only restore if the draft actually has content
+          if (parsed.issue_details || parsed.site_name || parsed.case_number) {
+            console.log('📝 Restoring draft for', portfolioName);
+            setNewRow(prev => ({
+              ...prev,
+              ...parsed
+            }));
+          }
+        } catch (err) {
+          console.warn('Error restoring draft:', err);
+        }
+      }
+    }
+  }, [isOpen, portfolioId, hour, draftKey, portfolioName]);
+
+  // Save draft whenever newRow changes
+  useEffect(() => {
+    if (isOpen && portfolioId && hour) {
+      // Don't save empty default state to avoid cluttering localStorage
+      const hasContent = newRow.site_name || newRow.case_number || newRow.issue_details || newRow.issues_missed_by;
+      if (hasContent) {
+        localStorage.setItem(draftKey, JSON.stringify(newRow));
+      } else {
+        localStorage.removeItem(draftKey);
+      }
+    }
+  }, [newRow, isOpen, portfolioId, hour, draftKey]);
 
   const handleAddIssue = async () => {
     if (!portfolioId) {
@@ -276,6 +360,9 @@ const PortfolioHourSessionDrawer = ({
       // 1. User marks "All Sites Checked" = Yes
       // 2. Hour changes (automatic)
       // 3. Admin manually removes lock
+
+      // Clear draft on success
+      localStorage.removeItem(draftKey);
 
       setNewRow({
         site_name: '',
